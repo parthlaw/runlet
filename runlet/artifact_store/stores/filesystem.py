@@ -51,8 +51,9 @@ class FilesystemStore(ArtifactStore):
         os.makedirs(self._base_dir, exist_ok=True)
 
     @classmethod
-    def from_config(cls, config: FilesystemConfig) -> FilesystemStore:
-        return cls(base_dir=config.base_dir, prefix=config.prefix)
+    def from_config(cls, config: dict[str, Any]) -> FilesystemStore:
+        cfg = FilesystemConfig.from_dict(config)
+        return cls(base_dir=cfg.base_dir, prefix=cfg.prefix)
 
     def build_key(self, run_id: str, step_name: str, filename: str) -> str:
         return f"{self._prefix}{run_id}/{step_name}/{filename}.jsonl"
