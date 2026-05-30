@@ -1,4 +1,5 @@
-"""Tests for Plan 4: core abstractions (ArtifactRef, blob store, context split, store registry, run_id validation)."""
+"""Tests for Plan 4: core abstractions (ArtifactRef, blob store, context split,
+store registry, run_id validation)."""
 
 from __future__ import annotations
 
@@ -9,12 +10,10 @@ from runlet.artifact_store import (
     build_store,
     register_store,
 )
-from runlet.artifact_store.store import ArtifactStore
 from runlet.artifacts.ref import ArtifactRef
 from runlet.orchestrator.context import PipelineContext, RuntimeContext
-from runlet.orchestrator.runner import SequentialRunner, _validate_run_id
+from runlet.orchestrator.runner import _validate_run_id
 from runlet.orchestrator.writer_context import WriterContext, build_context
-
 
 # ---------------------------------------------------------------------------
 # 4.1 — ArtifactRef
@@ -114,7 +113,6 @@ def test_put_blob_accepts_file_object(fs_store, tmp_path):
 
 
 def test_pointer_round_trip(fs_store):
-    import hashlib
     data = b"pointer test"
     h = fs_store.put_blob(data)
     fs_store.put_pointer("run1/step1/output", h)
@@ -149,7 +147,6 @@ def test_runtime_context_has_no_set_path():
     )
     # WriterContext has set_path; RuntimeContext does not
     assert hasattr(ctx, "set_path")
-    rc: RuntimeContext = ctx  # upcast to RuntimeContext
     assert not hasattr(RuntimeContext, "set_path")
 
 

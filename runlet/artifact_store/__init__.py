@@ -93,13 +93,13 @@ def build_runtime_stores(
 
 
 __all__ = [
+    "STORE_REGISTRY",
     "ArtifactStore",
     "ArtifactStoreDownloadError",
     "ArtifactStoreError",
     "ArtifactStoreUploadError",
     "FilesystemConfig",
     "FilesystemStore",
-    "STORE_REGISTRY",
     "build_runtime_stores",
     "build_store",
     "register_store",

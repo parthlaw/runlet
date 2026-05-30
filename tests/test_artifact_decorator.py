@@ -1,12 +1,10 @@
 """Tests for @artifact decorator."""
 
 import pytest
-
-from pydantic import field_validator
+from pydantic import ValidationError, field_validator
 
 from runlet.artifacts import BaseArtifact, artifact
 from runlet.artifacts.registry import ArtifactRegistry
-
 
 # ---------------------------------------------------------------------------
 # Helpers — use isolated registries so tests don't pollute each other
@@ -137,5 +135,5 @@ def test_artifact_is_frozen():
         value: int
 
     obj = Immutable(value=10)
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         obj.value = 99  # type: ignore[misc]

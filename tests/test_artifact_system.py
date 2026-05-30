@@ -4,22 +4,17 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import tempfile
-from typing import Any, Iterator
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from runlet.artifact_store.stores.filesystem import FilesystemStore
-from runlet.artifacts import ArtifactSerializer, BaseArtifact, SchemaError, artifact
-from runlet.artifacts.base import BaseArtifact
-from runlet.artifacts.errors import SchemaError
+from runlet.artifacts import BaseArtifact, SchemaError, artifact
+from runlet.artifacts.ref import ArtifactRef
 from runlet.artifacts.registry import ArtifactRegistry
 from runlet.artifacts.writer import EmptyArtifact, write_step_artifacts
-from runlet.artifacts.ref import ArtifactRef
-from runlet.orchestrator.context import PipelineContext, build_context
-
+from runlet.orchestrator.context import build_context
 
 # ---------------------------------------------------------------------------
 # Fixtures

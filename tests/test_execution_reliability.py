@@ -5,16 +5,12 @@ import threading
 import time
 from collections.abc import Iterator
 
-import pytest
-
 from runlet import BaseArtifact, BaseStep, artifact
 from runlet.orchestrator.config import PipelineConfig
 from runlet.orchestrator.context import PipelineContext
 from runlet.orchestrator.dag import DAG
-from runlet.orchestrator.models import RunnerConfig
+from runlet.orchestrator.models import RunnerConfig, RunResult
 from runlet.orchestrator.runner import SequentialRunner
-from runlet.orchestrator.state import RunState, StepStatus
-
 
 # ---------------------------------------------------------------------------
 # Shared artifact types
@@ -88,7 +84,8 @@ class TestRetry:
         runner = _make_runner(str(tmp_path), [
             _step_cfg(
                 "flaky", "FlakyStep",
-                retry={"max_attempts": 3, "backoff_base": 0.0, "backoff_multiplier": 1.0, "jitter": 0.0},
+                retry={"max_attempts": 3, "backoff_base": 0.0,
+                       "backoff_multiplier": 1.0, "jitter": 0.0},
             ),
         ])
         result = runner.run("retry-success")
@@ -111,7 +108,8 @@ class TestRetry:
         runner = _make_runner(str(tmp_path), [
             _step_cfg(
                 "fail", "AlwaysFailStep",
-                retry={"max_attempts": 2, "backoff_base": 0.0, "backoff_multiplier": 1.0, "jitter": 0.0},
+                retry={"max_attempts": 2, "backoff_base": 0.0,
+                       "backoff_multiplier": 1.0, "jitter": 0.0},
             ),
         ])
         result = runner.run("retry-exhaustion")
@@ -337,8 +335,8 @@ class TestParallelExecution:
         c_start, c_end = start_times["c"], end_times["c"]
         overlap = min(b_end, c_end) - max(b_start, c_start)
         assert overlap > 0, (
-            f"B and C did not overlap (b: {b_start:.3f}–{b_end:.3f}, "
-            f"c: {c_start:.3f}–{c_end:.3f})"
+            f"B and C did not overlap (b: {b_start:.3f}-{b_end:.3f}, "
+            f"c: {c_start:.3f}-{c_end:.3f})"
         )
 
     def test_sequential_order_preserved_with_one_worker(self, tmp_path, monkeypatch):

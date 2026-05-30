@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import io
 import os
 import tempfile
 from abc import ABC, abstractmethod
@@ -115,10 +114,7 @@ class ArtifactStore(ABC):
     @staticmethod
     def _hash_data(data: bytes | IO[bytes]) -> tuple[bytes, str]:
         """Read *data* fully and return (raw_bytes, sha256_hex)."""
-        if isinstance(data, (bytes, bytearray)):
-            raw = bytes(data)
-        else:
-            raw = data.read()
+        raw = bytes(data) if isinstance(data, (bytes, bytearray)) else data.read()
         h = hashlib.sha256(raw).hexdigest()
         return raw, h
 

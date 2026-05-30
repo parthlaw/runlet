@@ -12,12 +12,6 @@ from runlet.artifact_store import (
     build_store,
     register_store,
 )
-from runlet.metastore import (
-    NoopMetastore,
-    RunMetastore,
-    build_metastore,
-    register_metastore,
-)
 from runlet.artifacts import (
     ArtifactRef,
     ArtifactSerializer,
@@ -25,6 +19,12 @@ from runlet.artifacts import (
     artifact,
 )
 from runlet.logging import setup_logging
+from runlet.metastore import (
+    NoopMetastore,
+    RunMetastore,
+    build_metastore,
+    register_metastore,
+)
 from runlet.orchestrator.config import PipelineConfig
 from runlet.orchestrator.context import PipelineContext, RuntimeContext
 from runlet.orchestrator.dag import DAG
@@ -43,20 +43,24 @@ __all__ = [
     "ArtifactStoreUploadError",
     "BaseArtifact",
     "BaseStep",
+    "CockroachDBConfig",  # lazy-loaded via __getattr__
+    "CockroachDBMetastore",  # lazy-loaded via __getattr__
     "FilesystemStore",
-    "LLMConfig",
-    "LLMProxy",
+    "LLMConfig",  # lazy-loaded via __getattr__
+    "LLMProxy",  # lazy-loaded via __getattr__
     "NoopMetastore",
     "PipelineConfig",
     "PipelineContext",
+    "PostgresConfig",  # lazy-loaded via __getattr__
+    "PostgresMetastore",  # lazy-loaded via __getattr__
     "RunMetastore",
     "RunResult",
     "RunState",
     "RunStatus",
     "RunnerConfig",
     "RuntimeContext",
-    "S3ArtifactStore",
-    "S3Config",
+    "S3ArtifactStore",  # lazy-loaded via __getattr__
+    "S3Config",  # lazy-loaded via __getattr__
     "SequentialRunner",
     "StepStatus",
     "artifact",
@@ -67,11 +71,6 @@ __all__ = [
     "register_metastore",
     "register_store",
     "setup_logging",
-    # Lazy-loaded via __getattr__:
-    "CockroachDBConfig",
-    "CockroachDBMetastore",
-    "PostgresConfig",
-    "PostgresMetastore",
 ]
 
 

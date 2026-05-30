@@ -22,7 +22,6 @@ from runlet.artifacts.registry import registry as _global_artifact_registry
 from runlet.artifacts.writer import write_step_artifacts
 from runlet.orchestrator.condition_evaluator import evaluate_condition
 from runlet.orchestrator.config.models import PipelineConfig, StepConfig
-from runlet.orchestrator.context import PipelineContext
 from runlet.orchestrator.dag import DAG
 from runlet.orchestrator.errors import ConditionEvaluationError
 from runlet.orchestrator.executor import ThreadedExecutor
@@ -46,7 +45,10 @@ def _validate_run_id(run_id: str) -> None:
 
 
 class SequentialRunner:
-    """Executes a pipeline DAG via :class:`ThreadedExecutor` (sequential when max_concurrent_steps=1)."""
+    """Executes a pipeline DAG via :class:`ThreadedExecutor`.
+
+    Runs sequentially when max_concurrent_steps=1.
+    """
 
     def __init__(
         self,
@@ -138,7 +140,9 @@ class SequentialRunner:
                         return
                 except ConditionEvaluationError as exc:
                     error_msg = _format_error(step_name, exc)
-                    state.mark_step_failed(step_name=step_name, error=error_msg, duration_seconds=0.0)
+                    state.mark_step_failed(
+                        step_name=step_name, error=error_msg, duration_seconds=0.0
+                    )
                     _safe_metastore(
                         self._metastore.record_step_failed, run_id, step_name, 1, 0.0, error_msg
                     )
@@ -184,7 +188,7 @@ class SequentialRunner:
                             tmp_final_path=tmp_final_path,
                             step_cfg=step_cfg,
                         )
-                        ref = _upload_step_output(
+                        _upload_step_output(
                             context=context,
                             step_name=step_name,
                             local_path=tmp_final_path,
@@ -244,7 +248,9 @@ class SequentialRunner:
                 )
                 with _tracking_lock:
                     steps_executed.append(step_name)
-                logger.debug("[%s] Streamed %d record(s) → artifact store.", step_name, record_count)
+                logger.debug(
+                    "[%s] Streamed %d record(s) → artifact store.", step_name, record_count
+                )
 
             except Exception as exc:
                 duration = time.monotonic() - started_at
@@ -279,7 +285,10 @@ class SequentialRunner:
                 cancel_event=self._cancel_event,
             )
         except Exception as exc:
-            error = failure_info.get("error") or f"Orchestrator error: {exc}\n{traceback.format_exc()}"
+            error = (
+                failure_info.get("error")
+                or f"Orchestrator error: {exc}\n{traceback.format_exc()}"
+            )
             state.mark_run_failed(error=error)
             _safe_metastore(self._metastore.record_run_failed, run_id, error)
             self._metastore.close()
@@ -413,7 +422,7 @@ def _execute_with_timeout(
         except concurrent.futures.TimeoutError:
             raise TimeoutError(
                 f"Step {step_name!r} exceeded timeout of {timeout_s}s"
-            )
+            ) from None
 
 
 def _upload_step_output(

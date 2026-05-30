@@ -6,7 +6,8 @@ Requires:
     - TEST_METASTORE_DSN env var set to a valid PostgreSQL or CockroachDB DSN
 
 Run with:
-    TEST_METASTORE_DSN=postgresql://user:pw@localhost:5432/testdb pytest tests/test_postgres_metastore.py
+    TEST_METASTORE_DSN=postgresql://user:pw@localhost:5432/testdb \
+        pytest tests/test_postgres_metastore.py
 """
 
 import os
@@ -19,7 +20,7 @@ _DSN = os.environ.get("TEST_METASTORE_DSN")
 if not _DSN:
     pytest.skip("TEST_METASTORE_DSN not set", allow_module_level=True)
 
-from runlet.metastore.stores.postgres import PostgresConfig, PostgresMetastore
+from runlet.metastore.stores.postgres import PostgresConfig, PostgresMetastore  # noqa: E402
 
 
 @pytest.fixture

@@ -210,7 +210,8 @@ class PostgresMetastore(RunMetastore):
         self._execute(
             """
             INSERT INTO pipeline_steps
-                (run_id, step_name, status, attempt, duration_seconds, paths, schema_info, recorded_at)
+                (run_id, step_name, status, attempt,
+                 duration_seconds, paths, schema_info, recorded_at)
             VALUES (%s, %s, 'success', %s, %s, %s, %s, now())
             ON CONFLICT (run_id, step_name, attempt) DO UPDATE
               SET status = 'success',
@@ -257,10 +258,9 @@ class PostgresMetastore(RunMetastore):
     # ------------------------------------------------------------------
 
     def get_run(self, run_id: str) -> RunRecord | None:
-        with self._lock:
-            with self._conn.cursor() as cur:
-                cur.execute("SELECT * FROM pipeline_runs WHERE run_id = %s", (run_id,))
-                row = cur.fetchone()
+        with self._lock, self._conn.cursor() as cur:
+            cur.execute("SELECT * FROM pipeline_runs WHERE run_id = %s", (run_id,))
+            row = cur.fetchone()
         if row is None:
             return None
         return _row_to_run_record(row)
@@ -282,23 +282,21 @@ class PostgresMetastore(RunMetastore):
             params.append(status)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         params.extend([limit, offset])
-        with self._lock:
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    f"SELECT * FROM pipeline_runs {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
-                    params,
-                )
-                rows = cur.fetchall()
+        with self._lock, self._conn.cursor() as cur:
+            cur.execute(
+                f"SELECT * FROM pipeline_runs {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                params,
+            )
+            rows = cur.fetchall()
         return [_row_to_run_record(r) for r in rows]
 
     def list_steps(self, run_id: str) -> list[StepRecord]:
-        with self._lock:
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM pipeline_steps WHERE run_id = %s ORDER BY recorded_at ASC, id ASC",
-                    (run_id,),
-                )
-                rows = cur.fetchall()
+        with self._lock, self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM pipeline_steps WHERE run_id = %s ORDER BY recorded_at ASC, id ASC",
+                (run_id,),
+            )
+            rows = cur.fetchall()
         return [_row_to_step_record(r) for r in rows]
 
     # ------------------------------------------------------------------

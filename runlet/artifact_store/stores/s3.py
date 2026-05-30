@@ -177,7 +177,7 @@ class S3ArtifactStore(ArtifactStore):
     # Content-addressed blob storage
     # ------------------------------------------------------------------
 
-    def put_blob(self, data: bytes | "IO[bytes]", *, hint_key: str | None = None) -> str:
+    def put_blob(self, data: bytes | IO[bytes], *, hint_key: str | None = None) -> str:
         raw, h = self._hash_data(data)
         key = self._blob_key(h)
         try:

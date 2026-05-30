@@ -45,7 +45,6 @@ from collections.abc import Iterator
 from typing import Any
 
 from runlet.artifacts import BaseArtifact
-from runlet.orchestrator.context import PipelineContext
 from runlet.orchestrator.runtime_context import RuntimeContext
 
 logger = logging.getLogger(__name__)

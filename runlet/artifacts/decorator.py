@@ -15,7 +15,7 @@ def artifact(
     version: int,
     name: str | None = None,
     registry: ArtifactRegistry | None = None,
-) -> "ArtifactDecorator[T]":
+) -> ArtifactDecorator[T]:
     """
     Register a BaseArtifact subclass as a versioned pipeline artifact.
 
@@ -43,5 +43,6 @@ def artifact(
 
 
 # Type alias used only for the return annotation above
-from typing import Callable  # noqa: E402
+from collections.abc import Callable  # noqa: E402
+
 ArtifactDecorator = Callable[[T], T]

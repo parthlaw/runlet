@@ -7,7 +7,8 @@ GET /api/runs/{run_id}/steps/{step}/artifacts
 from __future__ import annotations
 
 import json
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -37,7 +38,9 @@ def get_step_artifacts(
         step_records = entry.metastore.list_steps(run_id)
         step_record = next((s for s in step_records if s.step_name == step), None)
         if step_record is None:
-            raise HTTPException(status_code=404, detail=f"Step '{step}' not found in run '{run_id}'")
+            raise HTTPException(
+                status_code=404, detail=f"Step '{step}' not found in run '{run_id}'"
+            )
 
         paths: dict[str, Any] = step_record.paths
         if not paths:

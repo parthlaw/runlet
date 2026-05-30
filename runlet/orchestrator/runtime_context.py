@@ -112,7 +112,9 @@ class RuntimeContext:
         ref = self.get_path(step_name, output_name)
 
         if not ref.is_compressed:
-            logger.debug("Reading first record (range): %s/%s → %s", step_name, output_name, ref.uri)
+            logger.debug(
+                "Reading first record (range): %s/%s → %s", step_name, output_name, ref.uri
+            )
             try:
                 chunk = self.store.download_bytes_range(ref.uri, 0, 4096)
                 lines = chunk.decode("utf-8").splitlines()

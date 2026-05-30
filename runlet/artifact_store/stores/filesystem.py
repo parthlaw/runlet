@@ -11,7 +11,7 @@ import os
 import shutil
 import tempfile
 from dataclasses import dataclass
-from typing import Any
+from typing import IO, Any
 from urllib.parse import urlparse
 
 from runlet.artifact_store.store import (
@@ -172,7 +172,7 @@ class FilesystemStore(ArtifactStore):
     # Content-addressed blob storage
     # ------------------------------------------------------------------
 
-    def put_blob(self, data: bytes | "IO[bytes]", *, hint_key: str | None = None) -> str:
+    def put_blob(self, data: bytes | IO[bytes], *, hint_key: str | None = None) -> str:
         raw, h = self._hash_data(data)
         blob_path = os.path.join(self._base_dir, "blobs", h[:2], h[2:4], h)
         os.makedirs(os.path.dirname(blob_path), exist_ok=True)
@@ -189,7 +189,8 @@ class FilesystemStore(ArtifactStore):
         return h
 
     def get_blob(self, content_hash: str) -> bytes:
-        blob_path = os.path.join(self._base_dir, "blobs", content_hash[:2], content_hash[2:4], content_hash)
+        h2, h4 = content_hash[:2], content_hash[2:4]
+        blob_path = os.path.join(self._base_dir, "blobs", h2, h4, content_hash)
         try:
             with open(blob_path, "rb") as fh:
                 return fh.read()
@@ -219,7 +220,8 @@ class FilesystemStore(ArtifactStore):
             return fh.read().strip()
 
     def blob_uri(self, content_hash: str) -> str:
-        blob_path = os.path.join(self._base_dir, "blobs", content_hash[:2], content_hash[2:4], content_hash)
+        h2, h4 = content_hash[:2], content_hash[2:4]
+        blob_path = os.path.join(self._base_dir, "blobs", h2, h4, content_hash)
         return f"file://{blob_path}"
 
     @property

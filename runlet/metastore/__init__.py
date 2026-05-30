@@ -76,20 +76,19 @@ def build_metastore(config: dict[str, Any] | None) -> RunMetastore:
 
 __all__ = [
     "METASTORE_REGISTRY",
+    "CockroachDBConfig",  # lazy-loaded via __getattr__
+    "CockroachDBMetastore",  # lazy-loaded via __getattr__
     "MetastoreConnectionError",
     "MetastoreError",
     "MetastoreSchemaError",
     "NoopMetastore",
+    "PostgresConfig",  # lazy-loaded via __getattr__
+    "PostgresMetastore",  # lazy-loaded via __getattr__
     "RunMetastore",
     "RunRecord",
     "StepRecord",
     "build_metastore",
     "register_metastore",
-    # Lazy-loaded via __getattr__:
-    "CockroachDBConfig",
-    "CockroachDBMetastore",
-    "PostgresConfig",
-    "PostgresMetastore",
 ]
 
 

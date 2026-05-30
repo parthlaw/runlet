@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import json
 import importlib
 import types
 from collections.abc import Iterator
@@ -12,18 +10,17 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
+from runlet import BaseStep
+from runlet.artifact_store.stores.filesystem import FilesystemStore
 from runlet.artifacts import BaseArtifact, artifact
 from runlet.llm.config import LLMConfig
 from runlet.llm.proxy import LLMProxy
-from runlet.orchestrator.context import PipelineContext
-from runlet.orchestrator.writer_context import build_context
-from runlet.artifact_store.stores.filesystem import FilesystemStore
 from runlet.orchestrator.config import PipelineConfig
+from runlet.orchestrator.context import PipelineContext
 from runlet.orchestrator.dag import DAG
 from runlet.orchestrator.models import RunnerConfig
 from runlet.orchestrator.runner import SequentialRunner
-from runlet import BaseStep
-
+from runlet.orchestrator.writer_context import build_context
 
 # ---------------------------------------------------------------------------
 # LLMConfig parsing
@@ -210,8 +207,8 @@ def test_build_runner_without_llm_block_context_llm_raises(tmp_path, monkeypatch
 
 def test_build_runner_with_llm_block_missing_env_raises(tmp_path, monkeypatch):
     """A pipeline with 'llm' block but missing env var must raise at build time."""
-    import tempfile, json as _json
-    from pathlib import Path
+    import json as _json
+
     from runlet.orchestrator.runner import build_runner
 
     monkeypatch.delenv("TEST_LLM_KEY_MISSING", raising=False)
@@ -228,7 +225,8 @@ def test_build_runner_with_llm_block_missing_env_raises(tmp_path, monkeypatch):
 
 def test_build_runner_with_llm_block_wires_proxy(tmp_path, monkeypatch):
     """With the env var set and _build_client patched, context.llm returns the proxy."""
-    import tempfile, json as _json
+    import json as _json
+
     from runlet.orchestrator.runner import build_runner
 
     monkeypatch.setenv("TEST_LLM_KEY", "sk-dummy")

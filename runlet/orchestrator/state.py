@@ -216,7 +216,9 @@ class RunState:
                 attempt=attempt,
             )
         ])
-        logger.error("[%s] → FAILED (%.2fs, attempt %d): %s", step_name, duration_seconds, attempt, error)
+        logger.error(
+            "[%s] → FAILED (%.2fs, attempt %d): %s", step_name, duration_seconds, attempt, error
+        )
 
     def mark_step_skipped(self, step_name: str) -> None:
         self._step_statuses[step_name] = StepStatus.SKIPPED

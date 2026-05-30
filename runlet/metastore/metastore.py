@@ -128,7 +128,10 @@ class RunMetastore(ABC):
         limit: int = 100,
         offset: int = 0,
     ) -> list[RunRecord]:
-        """List runs ordered by created_at DESC. Optionally filter by pipeline_name and/or status."""
+        """List runs ordered by created_at DESC.
+
+        Optionally filter by pipeline_name and/or status.
+        """
 
     @abstractmethod
     def list_steps(self, run_id: str) -> list[StepRecord]:
