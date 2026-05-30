@@ -70,6 +70,10 @@ plugins = ["pydantic.mypy"]
 module = ["fastapi", "fastapi.*", "uvicorn", "uvicorn.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["runlet.ui.*"]
+disable_error_code = ["untyped-decorator"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--tb=short -q"
