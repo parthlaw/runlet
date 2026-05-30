@@ -17,22 +17,22 @@ DAG pipeline orchestration engine with memory-efficient JSONL streaming, pluggab
 
 ```bash
 # Core (filesystem artifacts, no-op metastore)
-pip install runlet
+pip install "runlet @ git+https://github.com/parthlaw/runlet.git"
 
 # With S3 artifact storage
-pip install "runlet[s3]"
+pip install "runlet[s3] @ git+https://github.com/parthlaw/runlet.git"
 
 # With LLM step support
-pip install "runlet[llm]"
+pip install "runlet[llm] @ git+https://github.com/parthlaw/runlet.git"
 
 # With PostgreSQL metastore
-pip install "runlet[postgres]"
+pip install "runlet[postgres] @ git+https://github.com/parthlaw/runlet.git"
 
 # With web UI
-pip install "runlet[ui]"
+pip install "runlet[ui] @ git+https://github.com/parthlaw/runlet.git"
 
 # Everything
-pip install "runlet[s3,llm,postgres,ui]"
+pip install "runlet[s3,llm,postgres,ui] @ git+https://github.com/parthlaw/runlet.git"
 ```
 
 ## Quickstart
