@@ -1,35 +1,57 @@
-# pipeline-runner
+# runlet
 
-DAG pipeline orchestration engine with memory-efficient JSONL streaming and pluggable artifact storage (S3 by default).
+DAG pipeline orchestration engine with memory-efficient JSONL streaming, pluggable artifact storage, and optional agentic LLM steps.
+
+## Features
+
+- **DAG-based orchestration** — define steps and dependencies, run them in topological order
+- **JSONL artifact streaming** — step outputs are versioned, schema-annotated JSONL streams; large datasets never fully load into memory
+- **Typed artifacts** — Pydantic-backed artifact records with automatic schema evolution
+- **Pluggable artifact stores** — filesystem (default), S3; register custom backends
+- **Pluggable metastore** — persist run state and step history to PostgreSQL, CockroachDB, or a no-op store
+- **LLM step support** — built-in `LLMProxy` wraps OpenAI + Instructor for structured agentic steps
+- **Web UI** — FastAPI-powered dashboard for monitoring pipeline runs
+- **CLI** — `runlet` command for running and inspecting pipelines
 
 ## Install
 
 ```bash
-# S3 support (default production backend)
-pip install -e "/path/to/pipeline-runner[s3]"
+# Core (filesystem artifacts, no-op metastore)
+pip install runlet
 
-# Filesystem-only (no boto3)
-pip install -e /path/to/pipeline-runner
+# With S3 artifact storage
+pip install "runlet[s3]"
+
+# With LLM step support
+pip install "runlet[llm]"
+
+# With PostgreSQL metastore
+pip install "runlet[postgres]"
+
+# With web UI
+pip install "runlet[ui]"
+
+# Everything
+pip install "runlet[s3,llm,postgres,ui]"
 ```
 
-## Usage
+## Quickstart
 
 ```python
-from pipeline_runner import build_runner
+from runlet import build_runner
 
-runner = build_runner("config/pipeline.json", initial_metadata={"source_key": "...", "bucket": "..."})
+runner = build_runner("config/pipeline.json")
 result = runner.run(run_id="run-001")
 ```
 
-## Typed artifacts
+## Define steps
 
 ```python
-from dataclasses import dataclass
-from pipeline_runner import artifact, BaseStep, PipelineContext
+from pydantic import BaseModel
+from runlet import artifact, BaseStep, PipelineContext
 
 @artifact(version=1)
-@dataclass
-class ExtractRecord:
+class ExtractRecord(BaseModel):
     page: int
     text: str
 
@@ -43,14 +65,24 @@ class SummarizeStep(BaseStep):
             ...
 ```
 
-Each step output is a JSONL file: line 1 is a schema header; following lines are typed records.
+## Configure a pipeline
 
-## Public API
+```json
+{
+  "steps": [
+    { "name": "extract", "class": "myapp.steps.ExtractStep" },
+    { "name": "summarize", "class": "myapp.steps.SummarizeStep", "depends_on": ["extract"] }
+  ]
+}
+```
 
-- `build_runner`, `SequentialRunner`, `RunnerConfig`, `RunResult`
-- `DAG`, `PipelineConfig`
-- `PipelineContext` — `iter_artifacts(step, RecordType)`
-- `artifact`, `BaseArtifact`, `ArtifactSerializer`
-- `ArtifactStore`, `S3ArtifactStore`, `S3Config`, `FilesystemStore`, `build_store`
-- `RunState`, `RunStatus`, `StepStatus`
-- `BaseStep`
+## CLI
+
+```bash
+runlet run config/pipeline.json --run-id run-001
+runlet status run-001
+```
+
+## License
+
+MIT
