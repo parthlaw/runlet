@@ -66,6 +66,10 @@ strict = true
 python_version = "3.11"
 plugins = ["pydantic.mypy"]
 
+[[tool.mypy.overrides]]
+module = ["fastapi", "fastapi.*", "uvicorn", "uvicorn.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--tb=short -q"

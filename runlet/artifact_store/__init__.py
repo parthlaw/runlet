@@ -4,7 +4,7 @@ artifact_store — pluggable artifact persistence for pipeline runs.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from runlet.artifact_store.store import (
     ArtifactStore,
@@ -51,7 +51,7 @@ def build_store(config: dict[str, Any]) -> ArtifactStore:
     if cls is None:
         known = ", ".join(STORE_REGISTRY)
         raise ValueError(f"Unknown store type {store_type!r}. Known: {known}")
-    return cls.from_config(config)
+    return cast(ArtifactStore, cast(Any, cls).from_config(config))
 
 
 def build_runtime_stores(

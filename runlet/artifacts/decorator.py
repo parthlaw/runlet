@@ -34,12 +34,12 @@ def artifact(
                 "Define your artifact class as: class Foo(BaseArtifact): ..."
             )
         schema_name = name or cls.__name__
-        cls.SCHEMA_NAME = schema_name  # type: ignore[attr-defined]
-        cls.SCHEMA_VERSION = version  # type: ignore[attr-defined]
+        cls.SCHEMA_NAME = schema_name
+        cls.SCHEMA_VERSION = version
         (registry or _global_registry).register(cls)
         return cls
 
-    return decorator  # type: ignore[return-value]
+    return decorator
 
 
 # Type alias used only for the return annotation above

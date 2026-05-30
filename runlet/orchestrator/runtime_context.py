@@ -220,7 +220,7 @@ class RuntimeContext:
                             artifact_cls,
                             written_version,
                         )
-                        yield record  # type: ignore[misc]
+                        yield record
         finally:
             with contextlib.suppress(OSError):
                 os.remove(tmp_path)

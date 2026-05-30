@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import IO, Any
+from typing import IO, Any, cast
 
 import boto3  # type: ignore[import-untyped]
 from botocore.exceptions import ClientError  # type: ignore[import-untyped]
@@ -167,7 +167,7 @@ class S3ArtifactStore(ArtifactStore):
                 Key=key,
                 Range=f"bytes={start}-{end - 1}",
             )
-            return response["Body"].read()
+            return cast(bytes, response["Body"].read())
         except ClientError as exc:
             raise ArtifactStoreDownloadError(
                 f"Failed range download {uri} [{start}:{end}]: {exc}"
@@ -205,7 +205,7 @@ class S3ArtifactStore(ArtifactStore):
         key = self._blob_key(content_hash)
         try:
             response = self._client.get_object(Bucket=self._config.bucket, Key=key)
-            return response["Body"].read()
+            return cast(bytes, response["Body"].read())
         except ClientError as exc:
             raise ArtifactStoreDownloadError(
                 f"Blob {content_hash!r} not found: {exc}"
@@ -229,7 +229,7 @@ class S3ArtifactStore(ArtifactStore):
         ptr_key = f"{self._config.prefix}pointers/{key}.ptr"
         try:
             response = self._client.get_object(Bucket=self._config.bucket, Key=ptr_key)
-            return response["Body"].read().decode().strip()
+            return cast(str, response["Body"].read().decode().strip())
         except ClientError as exc:
             if exc.response["Error"]["Code"] in ("404", "NoSuchKey"):
                 return None

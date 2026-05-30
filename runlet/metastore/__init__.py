@@ -17,7 +17,7 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from runlet.metastore.metastore import (
     MetastoreConnectionError,
@@ -71,7 +71,7 @@ def build_metastore(config: dict[str, Any] | None) -> RunMetastore:
         known = ", ".join(METASTORE_REGISTRY)
         raise ValueError(f"Unknown metastore type {metastore_type!r}. Known: {known}")
 
-    return cls.from_config(config)
+    return cast(RunMetastore, cast(Any, cls).from_config(config))
 
 
 __all__ = [

@@ -75,7 +75,7 @@ class LLMProxy:
         **kwargs:
             Forwarded to the underlying Instructor call (temperature, max_tokens, etc.).
         """
-        return self._client.chat.completions.create(  # type: ignore[return-value]
+        return self._client.chat.completions.create(  # type: ignore[no-any-return]
             model=model or self._model,
             messages=messages,
             response_model=response_model,
