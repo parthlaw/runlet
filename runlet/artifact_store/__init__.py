@@ -86,7 +86,7 @@ def build_runtime_stores(
         return S3ArtifactStore(store_config), S3ArtifactStore(upload_config), prefix
 
     if store_type == "filesystem":
-        fs_store = FilesystemStore.from_config(FilesystemConfig.from_dict(store_raw))
+        fs_store = FilesystemStore.from_config(store_raw)
         return fs_store, fs_store, fs_store.prefix
 
     raise ValueError(f"Unknown artifact store type: {store_type!r}")
