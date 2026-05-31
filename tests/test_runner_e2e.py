@@ -160,7 +160,12 @@ def test_step_inputs_not_polluted_by_store_config(store_dir, monkeypatch):
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
 
     raw = _build_pipeline_config(store_dir, [
-        {"name": "sniffer", "module": "test_steps", "class": "MetadataSnifferStep", "depends_on": []},
+        {
+            "name": "sniffer",
+            "module": "test_steps",
+            "class": "MetadataSnifferStep",
+            "depends_on": [],
+        },
     ])
     cfg = PipelineConfig.from_dict(raw)
     dag = DAG(cfg)

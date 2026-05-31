@@ -76,31 +76,33 @@ def test_noop_record_run_success_no_outputs():
 
 
 def test_run_record_has_outputs_field():
-    from runlet.metastore.metastore import RunRecord
     import datetime
+
+    from runlet.metastore.metastore import RunRecord
 
     rec = RunRecord(
         run_id="r5",
         pipeline_name="pipe",
         status="success",
         error=None,
-        created_at=datetime.datetime.now(tz=datetime.timezone.utc),
-        updated_at=datetime.datetime.now(tz=datetime.timezone.utc),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
+        updated_at=datetime.datetime.now(tz=datetime.UTC),
         outputs={"score": 0.95},
     )
     assert rec.outputs == {"score": 0.95}
 
 
 def test_run_record_outputs_defaults_to_empty():
-    from runlet.metastore.metastore import RunRecord
     import datetime
+
+    from runlet.metastore.metastore import RunRecord
 
     rec = RunRecord(
         run_id="r6",
         pipeline_name="pipe",
         status="success",
         error=None,
-        created_at=datetime.datetime.now(tz=datetime.timezone.utc),
-        updated_at=datetime.datetime.now(tz=datetime.timezone.utc),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
+        updated_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert rec.outputs == {}
