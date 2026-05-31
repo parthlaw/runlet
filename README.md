@@ -82,7 +82,3 @@ class SummarizeStep(BaseStep):
 runlet run config/pipeline.json --run-id run-001
 runlet status run-001
 ```
-
-## License
-
-MIT
