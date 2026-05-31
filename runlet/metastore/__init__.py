@@ -13,6 +13,13 @@ Usage::
         "dsn": "postgresql://user:pw@localhost:5432/pipeline_metastore",
     })
     metastore.init_schema()
+
+    # SQLite (no external deps — stdlib sqlite3):
+    metastore = build_metastore({
+        "type": "sqlite",
+        "db_path": "/var/data/pipeline_metastore.db",
+    })
+    metastore.init_schema()
 """
 
 from __future__ import annotations
@@ -66,6 +73,11 @@ def build_metastore(config: dict[str, Any] | None) -> RunMetastore:
 
         METASTORE_REGISTRY["cockroachdb"] = CockroachDBMetastore
 
+    if metastore_type == "sqlite" and "sqlite" not in METASTORE_REGISTRY:
+        from runlet.metastore.stores.sqlite import SqliteMetastore
+
+        METASTORE_REGISTRY["sqlite"] = SqliteMetastore
+
     cls = METASTORE_REGISTRY.get(metastore_type)
     if cls is None:
         known = ", ".join(METASTORE_REGISTRY)
@@ -86,6 +98,8 @@ __all__ = [
     "PostgresMetastore",  # lazy-loaded via __getattr__
     "RunMetastore",
     "RunRecord",
+    "SqliteConfig",  # lazy-loaded via __getattr__
+    "SqliteMetastore",  # lazy-loaded via __getattr__
     "StepRecord",
     "build_metastore",
     "register_metastore",
@@ -104,4 +118,8 @@ def __getattr__(name: str) -> object:
         )
 
         return CockroachDBMetastore if name == "CockroachDBMetastore" else CockroachDBConfig
+    if name in ("SqliteMetastore", "SqliteConfig"):
+        from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
+
+        return SqliteMetastore if name == "SqliteMetastore" else SqliteConfig
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
