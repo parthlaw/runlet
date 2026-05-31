@@ -1,9 +1,7 @@
-"""PreludeStep — a BaseStep variant that runs before the DAG topology begins."""
-
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 from runlet.artifacts.base import BaseArtifact
@@ -20,7 +18,7 @@ class PreludeStep(BaseStep):
     """
 
     @abstractmethod
-    def execute_prelude(self, metadata: dict[str, Any]) -> Iterator[BaseArtifact]:
+    def execute_prelude(self, metadata: Mapping[str, Any]) -> Iterator[BaseArtifact]:
         """Run pre-topology logic against pipeline metadata."""
         ...
 

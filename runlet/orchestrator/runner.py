@@ -54,14 +54,16 @@ class SequentialRunner:
         self,
         dag: DAG,
         runner_config: RunnerConfig | None = None,
-        initial_metadata: dict[str, Any] | None = None,
+        step_inputs: dict[str, Any] | None = None,
+        store_overrides: dict[str, Any] | None = None,
         artifact_registry: ArtifactRegistry | None = None,
         llm: Any | None = None,
         metastore: Any | None = None,
     ) -> None:
         self._dag = dag
         self._config = runner_config or RunnerConfig()
-        self._initial_metadata: dict[str, Any] = initial_metadata or {}
+        self._step_inputs: dict[str, Any] = step_inputs or {}
+        self._store_overrides: dict[str, Any] = store_overrides or {}
         self._cancel_event = threading.Event()
         self._artifact_registry = artifact_registry or _global_artifact_registry
         self._llm = llm
@@ -82,7 +84,7 @@ class SequentialRunner:
         pipeline_cfg = self._dag.config
         store, upload_store, store_prefix = build_runtime_stores(
             pipeline_cfg.store_raw,
-            self._initial_metadata,
+            self._store_overrides,
         )
 
         context = build_context(
@@ -90,7 +92,7 @@ class SequentialRunner:
             pipeline_name=pipeline_cfg.name,
             store=store,
             upload_store=upload_store,
-            metadata=self._initial_metadata.copy(),
+            metadata=self._step_inputs.copy(),
             artifact_registry=self._artifact_registry,
             llm=self._llm,
         )
@@ -301,7 +303,8 @@ class SequentialRunner:
                 failed_step=failure_info.get("step"),
                 error=error,
                 state_uri=state.store_uri,
-                metadata=copy.deepcopy(context.metadata),
+                metadata=copy.deepcopy(dict(context.metadata)),
+                outputs=copy.deepcopy(context._outputs),
             )
 
         if self._cancel_event.is_set():
@@ -317,11 +320,12 @@ class SequentialRunner:
                 failed_step=None,
                 error=None,
                 state_uri=state.store_uri,
-                metadata=copy.deepcopy(context.metadata),
+                metadata=copy.deepcopy(dict(context.metadata)),
+                outputs=copy.deepcopy(context._outputs),
             )
 
         state.mark_run_success()
-        _safe_metastore(self._metastore.record_run_success, run_id)
+        _safe_metastore(self._metastore.record_run_success, run_id, copy.deepcopy(context._outputs))
         self._metastore.close()
         logger.info(
             "Pipeline '%s' finished. Executed: %s | Skipped: %s",
@@ -338,7 +342,8 @@ class SequentialRunner:
             failed_step=None,
             error=None,
             state_uri=state.store_uri,
-            metadata=copy.deepcopy(context.metadata),
+            metadata=copy.deepcopy(dict(context.metadata)),
+            outputs=copy.deepcopy(context._outputs),
         )
 
     def _initialise_state(
@@ -465,10 +470,24 @@ def _format_error(step_name: str, exc: Exception) -> str:
 def build_runner(
     config_path: Path | str,
     resume: bool = False,
-    initial_metadata: dict[str, Any] | None = None,
+    step_inputs: dict[str, Any] | None = None,
+    store_overrides: dict[str, Any] | None = None,
     artifact_registry: ArtifactRegistry | None = None,
 ) -> SequentialRunner:
-    """Factory: load a pipeline JSON config and return a ready-to-run SequentialRunner."""
+    """Factory: load a pipeline JSON config and return a ready-to-run SequentialRunner.
+
+    Parameters
+    ----------
+    step_inputs:
+        Data for steps — accessible via ``context.metadata`` during execution.
+        Should contain only domain/business values (e.g. ``source_key``,
+        ``user_id``, ``pages``). Infrastructure config (bucket, prefix) belongs
+        in ``store_overrides``, not here.
+    store_overrides:
+        Per-run infrastructure overrides for the artifact store. Keys:
+        ``bucket`` (str) and ``prefix`` (str). The caller computes these from
+        business rules before constructing the runner.
+    """
     pipeline_cfg = PipelineConfig.from_file(config_path)
     raw = pipeline_cfg.raw
 
@@ -493,7 +512,8 @@ def build_runner(
     return SequentialRunner(
         dag=dag,
         runner_config=runner_cfg,
-        initial_metadata=initial_metadata,
+        step_inputs=step_inputs,
+        store_overrides=store_overrides,
         artifact_registry=artifact_registry,
         llm=llm,
     )

@@ -26,10 +26,6 @@ class WriterContext(RuntimeContext):
     modify the path registry.
     """
 
-    @property
-    def metadata(self) -> dict[str, Any]:
-        return self._metadata
-
     def set_path(self, step_name: str, output_name: str, ref: ArtifactRef) -> None:
         """Register an artifact ref produced by *step_name* under *output_name*."""
         with self._paths_lock:

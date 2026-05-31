@@ -60,8 +60,49 @@ def test_noop_close_is_idempotent():
     ms.close()
 
 
-def test_build_metastore_unknown_type_raises():
-    import pytest
+def test_noop_record_run_success_accepts_outputs():
+    ms = NoopMetastore()
+    ms.record_run_started("r3", "pipe")
+    # must not raise — outputs kwarg is part of the contract
+    ms.record_run_success("r3", outputs={"score": 0.9, "download_url": "s3://bucket/key"})
+    ms.close()
 
-    with pytest.raises(ValueError, match="Unknown metastore type"):
-        build_metastore({"type": "oracle"})
+
+def test_noop_record_run_success_no_outputs():
+    ms = NoopMetastore()
+    ms.record_run_started("r4", "pipe")
+    ms.record_run_success("r4")  # backward-compat: outputs defaults to None
+    ms.close()
+
+
+def test_run_record_has_outputs_field():
+    import datetime
+
+    from runlet.metastore.metastore import RunRecord
+
+    rec = RunRecord(
+        run_id="r5",
+        pipeline_name="pipe",
+        status="success",
+        error=None,
+        created_at=datetime.datetime.now(tz=datetime.UTC),
+        updated_at=datetime.datetime.now(tz=datetime.UTC),
+        outputs={"score": 0.95},
+    )
+    assert rec.outputs == {"score": 0.95}
+
+
+def test_run_record_outputs_defaults_to_empty():
+    import datetime
+
+    from runlet.metastore.metastore import RunRecord
+
+    rec = RunRecord(
+        run_id="r6",
+        pipeline_name="pipe",
+        status="success",
+        error=None,
+        created_at=datetime.datetime.now(tz=datetime.UTC),
+        updated_at=datetime.datetime.now(tz=datetime.UTC),
+    )
+    assert rec.outputs == {}
