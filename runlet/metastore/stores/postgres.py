@@ -26,12 +26,16 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     pipeline_name   TEXT        NOT NULL,
     status          TEXT        NOT NULL,
     error           TEXT,
+    outputs         JSONB       NOT NULL DEFAULT '{}',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT pipeline_runs_pkey PRIMARY KEY (run_id),
     CONSTRAINT pipeline_runs_status_check
         CHECK (status IN ('running', 'success', 'failed', 'cancelled'))
 );
+-- Idempotent migration for existing installations that pre-date the outputs column.
+ALTER TABLE IF EXISTS pipeline_runs
+    ADD COLUMN IF NOT EXISTS outputs JSONB NOT NULL DEFAULT '{}';
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_pipeline_name
     ON pipeline_runs (pipeline_name);
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status
@@ -150,14 +154,17 @@ class PostgresMetastore(RunMetastore):
             (run_id, pipeline_name),
         )
 
-    def record_run_success(self, run_id: str) -> None:
+    def record_run_success(self, run_id: str, outputs: dict[str, Any] | None = None) -> None:
+        from psycopg.types.json import Jsonb
+
         self._execute(
             """
             UPDATE pipeline_runs
-               SET status = 'success', updated_at = now(), error = NULL
+               SET status = 'success', updated_at = now(), error = NULL,
+                   outputs = %s
              WHERE run_id = %s
             """,
-            (run_id,),
+            (Jsonb(outputs or {}), run_id),
         )
 
     def record_run_failed(self, run_id: str, error: str) -> None:
@@ -336,6 +343,7 @@ def _row_to_run_record(row: dict[str, Any]) -> RunRecord:
         error=row.get("error"),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        outputs=row.get("outputs") or {},
     )
 
 

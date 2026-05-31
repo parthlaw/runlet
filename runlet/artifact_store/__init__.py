@@ -56,7 +56,7 @@ def build_store(config: dict[str, Any]) -> ArtifactStore:
 
 def build_runtime_stores(
     store_raw: dict[str, Any],
-    initial_metadata: dict[str, Any],
+    store_overrides: dict[str, Any] | None = None,
 ) -> tuple[ArtifactStore, ArtifactStore, str]:
     """
     Build pipeline-internal and user-facing artifact stores for a run.
@@ -65,23 +65,27 @@ def build_runtime_stores(
 
     ``store`` is scoped to pipeline artifacts (intermediate JSONL, run state).
     ``upload_store`` is unscoped for reading source files and writing final results.
+
+    ``store_overrides`` carries per-run infrastructure config (bucket, prefix)
+    computed by the caller before the runner is created — never derived from
+    step data. Keys: ``bucket`` (str), ``prefix`` (str).
     """
     store_type = store_raw.get("type", "s3")
+    overrides = store_overrides or {}
 
     if store_type == "s3":
         from runlet.artifact_store.stores.s3 import S3ArtifactStore, S3Config
 
-        source_bucket: str = initial_metadata.get("bucket", store_raw.get("bucket", ""))
-        source_key: str = initial_metadata.get("source_key", "")
+        bucket = overrides.get("bucket") or store_raw.get("bucket", "")
+        prefix = overrides.get("prefix") or store_raw.get("prefix", "pipelines/")
         region = store_raw["region"]
         endpoint_url = store_raw.get("endpoint_url")
-        prefix = f"{source_key}/steps/" if source_key else store_raw.get("prefix", "pipelines/")
 
         store_config = S3Config(
-            bucket=source_bucket, region=region, prefix=prefix, endpoint_url=endpoint_url
+            bucket=bucket, region=region, prefix=prefix, endpoint_url=endpoint_url
         )
         upload_config = S3Config(
-            bucket=source_bucket, region=region, prefix="", endpoint_url=endpoint_url
+            bucket=bucket, region=region, prefix="", endpoint_url=endpoint_url
         )
         return S3ArtifactStore(store_config), S3ArtifactStore(upload_config), prefix
 

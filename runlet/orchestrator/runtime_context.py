@@ -56,10 +56,26 @@ class RuntimeContext:
         self._paths: dict[str, dict[str, ArtifactRef]] = {}
         self._paths_lock = threading.RLock()
         self._llm = llm
+        self._outputs: dict[str, Any] = {}
 
     @property
     def metadata(self) -> Mapping[str, Any]:
         return self._metadata
+
+    @property
+    def outputs(self) -> Mapping[str, Any]:
+        """Read-only view of values written by steps via set_output()."""
+        return self._outputs
+
+    def set_output(self, key: str, value: Any) -> None:
+        """
+        Record a step output value.
+
+        Use this instead of writing to context.metadata. Values are surfaced
+        in RunResult.outputs after the run completes and persisted to the
+        metastore so async callers can retrieve them.
+        """
+        self._outputs[key] = value
 
     @property
     def llm(self) -> Any:

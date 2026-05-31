@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -22,6 +22,7 @@ class RunRecord:
     error: str | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    outputs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -62,8 +63,8 @@ class RunMetastore(ABC):
         """UPSERT a run row with status='running'. Safe to call on resume."""
 
     @abstractmethod
-    def record_run_success(self, run_id: str) -> None:
-        """Update run status to 'success'."""
+    def record_run_success(self, run_id: str, outputs: dict[str, Any] | None = None) -> None:
+        """Update run status to 'success' and persist step outputs from context.metadata."""
 
     @abstractmethod
     def record_run_failed(self, run_id: str, error: str) -> None:

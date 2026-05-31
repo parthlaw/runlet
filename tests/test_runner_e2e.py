@@ -137,7 +137,46 @@ def test_resume_skips_completed_steps(store_dir, monkeypatch):
     assert result2.steps_executed == []
 
 
-def test_failing_step_returns_failed_result(store_dir, monkeypatch):
+def test_step_inputs_not_polluted_by_store_config(store_dir, monkeypatch):
+    """Infrastructure config (bucket, prefix) must never appear in context.metadata."""
+    import importlib
+    original_import_module = importlib.import_module
+
+    seen_metadata: dict = {}
+
+    class MetadataSnifferStep(BaseStep):
+        def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+            seen_metadata.update(context.metadata)
+            yield CountRecord(value=0)
+
+    def fake_import_module(name, *args, **kwargs):
+        if name == "test_steps":
+            import types
+            m = types.ModuleType("test_steps")
+            m.MetadataSnifferStep = MetadataSnifferStep
+            return m
+        return original_import_module(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    raw = _build_pipeline_config(store_dir, [
+        {"name": "sniffer", "module": "test_steps", "class": "MetadataSnifferStep", "depends_on": []},
+    ])
+    cfg = PipelineConfig.from_dict(raw)
+    dag = DAG(cfg)
+    runner = SequentialRunner(
+        dag,
+        RunnerConfig(),
+        step_inputs={"source_key": "uploads/foo.pdf", "user_id": "u-1"},
+        store_overrides={"bucket": "my-bucket", "prefix": "auth/u-1/job-1"},
+    )
+    result = runner.run("run004")
+
+    assert result.success
+    assert seen_metadata.get("source_key") == "uploads/foo.pdf"
+    assert seen_metadata.get("user_id") == "u-1"
+    assert "bucket" not in seen_metadata
+    assert "prefix" not in seen_metadata
     import importlib
     original_import_module = importlib.import_module
 
