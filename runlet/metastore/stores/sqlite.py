@@ -9,12 +9,14 @@ import logging
 import sqlite3
 import threading
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from runlet.metastore.metastore import (
+    MetastoreConfig,
     MetastoreConnectionError,
     MetastoreError,
     MetastoreSchemaError,
+    MetastoreType,
     RunMetastore,
     RunRecord,
     StepRecord,
@@ -71,7 +73,7 @@ def _now_iso() -> str:
 
 
 @dataclass(frozen=True)
-class SqliteConfig:
+class SqliteConfig(MetastoreConfig):
     """
     Connection settings for SqliteMetastore.
 
@@ -80,6 +82,8 @@ class SqliteConfig:
     before raising an error (maps to the *timeout* parameter of
     ``sqlite3.connect``).
     """
+
+    TYPE: ClassVar[MetastoreType] = MetastoreType.SQLITE
 
     db_path: str
     timeout: float = 30.0

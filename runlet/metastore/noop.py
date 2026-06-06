@@ -20,7 +20,7 @@ class NoopMetastore(RunMetastore):
     def record_run_started(self, run_id: str, pipeline_name: str) -> None:
         pass
 
-    def record_run_success(self, run_id: str) -> None:
+    def record_run_success(self, run_id: str, outputs: dict[str, Any] | None = None) -> None:
         pass
 
     def record_run_failed(self, run_id: str, error: str) -> None:

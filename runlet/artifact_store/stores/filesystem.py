@@ -11,21 +11,25 @@ import os
 import shutil
 import tempfile
 from dataclasses import dataclass
-from typing import IO, Any
+from typing import IO, Any, ClassVar
 from urllib.parse import urlparse
 
 from runlet.artifact_store.store import (
     ArtifactStore,
     ArtifactStoreDownloadError,
     ArtifactStoreUploadError,
+    StoreConfig,
+    StoreType,
 )
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class FilesystemConfig:
+class FilesystemConfig(StoreConfig):
     """Filesystem store settings."""
+
+    TYPE: ClassVar[StoreType] = StoreType.FILESYSTEM
 
     base_dir: str
     prefix: str = ""

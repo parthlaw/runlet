@@ -4,13 +4,16 @@ artifact_store — pluggable artifact persistence for pipeline runs.
 
 from __future__ import annotations
 
-from typing import Any, cast
+import dataclasses
+from typing import Any
 
 from runlet.artifact_store.store import (
     ArtifactStore,
     ArtifactStoreDownloadError,
     ArtifactStoreError,
     ArtifactStoreUploadError,
+    StoreConfig,
+    StoreType,
 )
 from runlet.artifact_store.stores.filesystem import (
     FilesystemConfig,
@@ -29,33 +32,31 @@ def register_store(name: str, cls: type[ArtifactStore]) -> None:
     STORE_REGISTRY[name] = cls
 
 
-def build_store(config: dict[str, Any]) -> ArtifactStore:
-    """
-    Construct an :class:`ArtifactStore` from a pipeline config ``store`` block.
+def build_store_config(data: dict[str, Any]) -> StoreConfig:
+    """Parse a raw ``store`` config dict into a typed :class:`StoreConfig`."""
+    store_type = StoreType(data.get("type", StoreType.FILESYSTEM.value))
+    if store_type == StoreType.S3:
+        from runlet.artifact_store.stores.s3 import S3Config
 
-    Parameters
-    ----------
-    config:
-        Dict with a ``type`` key (default ``"filesystem"``). Remaining keys are
-        passed to the concrete store's ``from_config`` classmethod.
-    """
-    store_type = config.get("type", "filesystem")
+        return S3Config.from_dict(data)
+    if store_type == StoreType.FILESYSTEM:
+        return FilesystemConfig.from_dict(data)
+    raise ValueError(f"Unhandled store type {store_type!r}")
 
-    # Lazy-register S3 on first use to avoid importing boto3 unconditionally.
-    if store_type == "s3" and "s3" not in STORE_REGISTRY:
-        from runlet.artifact_store.stores.s3 import S3ArtifactStore
 
-        STORE_REGISTRY["s3"] = S3ArtifactStore
+def build_store(config: StoreConfig) -> ArtifactStore:
+    """Construct an :class:`ArtifactStore` from a typed :class:`StoreConfig`."""
+    if isinstance(config, FilesystemConfig):
+        return FilesystemStore(base_dir=config.base_dir, prefix=config.prefix)
+    from runlet.artifact_store.stores.s3 import S3ArtifactStore, S3Config
 
-    cls = STORE_REGISTRY.get(store_type)
-    if cls is None:
-        known = ", ".join(STORE_REGISTRY)
-        raise ValueError(f"Unknown store type {store_type!r}. Known: {known}")
-    return cast(ArtifactStore, cast(Any, cls).from_config(config))
+    if isinstance(config, S3Config):
+        return S3ArtifactStore(config)
+    raise ValueError(f"Unknown store config: {type(config).__name__!r}")
 
 
 def build_runtime_stores(
-    store_raw: dict[str, Any],
+    store: StoreConfig,
     initial_metadata: dict[str, Any],
 ) -> tuple[ArtifactStore, ArtifactStore, str]:
     """
@@ -66,30 +67,21 @@ def build_runtime_stores(
     ``store`` is scoped to pipeline artifacts (intermediate JSONL, run state).
     ``upload_store`` is unscoped for reading source files and writing final results.
     """
-    store_type = store_raw.get("type", "s3")
+    from runlet.artifact_store.stores.s3 import S3ArtifactStore, S3Config
 
-    if store_type == "s3":
-        from runlet.artifact_store.stores.s3 import S3ArtifactStore, S3Config
-
-        source_bucket: str = initial_metadata.get("bucket", store_raw.get("bucket", ""))
+    if isinstance(store, S3Config):
+        bucket: str = initial_metadata.get("bucket", store.bucket)
         source_key: str = initial_metadata.get("source_key", "")
-        region = store_raw["region"]
-        endpoint_url = store_raw.get("endpoint_url")
-        prefix = f"{source_key}/steps/" if source_key else store_raw.get("prefix", "pipelines/")
+        prefix = f"{source_key}/steps/" if source_key else store.prefix
+        store_cfg = dataclasses.replace(store, bucket=bucket, prefix=prefix)
+        upload_cfg = dataclasses.replace(store, bucket=bucket, prefix="")
+        return S3ArtifactStore(store_cfg), S3ArtifactStore(upload_cfg), prefix
 
-        store_config = S3Config(
-            bucket=source_bucket, region=region, prefix=prefix, endpoint_url=endpoint_url
-        )
-        upload_config = S3Config(
-            bucket=source_bucket, region=region, prefix="", endpoint_url=endpoint_url
-        )
-        return S3ArtifactStore(store_config), S3ArtifactStore(upload_config), prefix
+    if isinstance(store, FilesystemConfig):
+        fs_store = FilesystemStore(base_dir=store.base_dir, prefix=store.prefix)
+        return fs_store, fs_store, store.prefix
 
-    if store_type == "filesystem":
-        fs_store = FilesystemStore.from_config(store_raw)
-        return fs_store, fs_store, fs_store.prefix
-
-    raise ValueError(f"Unknown artifact store type: {store_type!r}")
+    raise ValueError(f"Unknown store config: {type(store).__name__!r}")
 
 
 __all__ = [
@@ -100,8 +92,11 @@ __all__ = [
     "ArtifactStoreUploadError",
     "FilesystemConfig",
     "FilesystemStore",
+    "StoreConfig",
+    "StoreType",
     "build_runtime_stores",
     "build_store",
+    "build_store_config",
     "register_store",
 ]
 

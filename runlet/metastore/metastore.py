@@ -10,8 +10,22 @@ from __future__ import annotations
 
 import datetime
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, ClassVar
+
+
+class MetastoreType(str, Enum):
+    NOOP = "noop"
+    SQLITE = "sqlite"
+    POSTGRES = "postgres"
+    COCKROACHDB = "cockroachdb"
+
+
+class MetastoreConfig:
+    """Marker base for all metastore configuration dataclasses."""
+
+    TYPE: ClassVar[MetastoreType]
 
 
 @dataclass(frozen=True)
@@ -22,6 +36,7 @@ class RunRecord:
     error: str | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    outputs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -62,8 +77,8 @@ class RunMetastore(ABC):
         """UPSERT a run row with status='running'. Safe to call on resume."""
 
     @abstractmethod
-    def record_run_success(self, run_id: str) -> None:
-        """Update run status to 'success'."""
+    def record_run_success(self, run_id: str, outputs: dict[str, Any] | None = None) -> None:
+        """Update run status to 'success' and persist optional step outputs."""
 
     @abstractmethod
     def record_run_failed(self, run_id: str, error: str) -> None:

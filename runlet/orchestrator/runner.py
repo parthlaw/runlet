@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import contextlib
 import copy
+import dataclasses
 import logging
 import os
 import re
@@ -60,7 +61,7 @@ class SequentialRunner:
         metastore: Any | None = None,
     ) -> None:
         self._dag = dag
-        self._config = runner_config or RunnerConfig()
+        self._config = runner_config or dag.config.runner
         self._initial_metadata: dict[str, Any] = initial_metadata or {}
         self._cancel_event = threading.Event()
         self._artifact_registry = artifact_registry or _global_artifact_registry
@@ -70,7 +71,13 @@ class SequentialRunner:
         else:
             from runlet.metastore import build_metastore
 
-            self._metastore = build_metastore(self._config.metastore_raw)
+            self._metastore = build_metastore(self._config.metastore)
+
+        # Ensure tables exist; CREATE TABLE IF NOT EXISTS makes this idempotent.
+        try:
+            self._metastore.init_schema()
+        except Exception as exc:
+            logger.warning("Metastore init_schema() failed (non-fatal): %s", exc)
 
     def cancel(self) -> None:
         """Signal the runner to stop dispatching new steps after the current ones complete."""
@@ -81,7 +88,7 @@ class SequentialRunner:
 
         pipeline_cfg = self._dag.config
         store, upload_store, store_prefix = build_runtime_stores(
-            pipeline_cfg.store_raw,
+            pipeline_cfg.store,
             self._initial_metadata,
         )
 
@@ -470,24 +477,16 @@ def build_runner(
 ) -> SequentialRunner:
     """Factory: load a pipeline JSON config and return a ready-to-run SequentialRunner."""
     pipeline_cfg = PipelineConfig.from_file(config_path)
-    raw = pipeline_cfg.raw
 
-    runner_cfg = RunnerConfig.from_dict(raw.get("runner", {}))
+    runner_cfg = pipeline_cfg.runner
     if resume:
-        runner_cfg = RunnerConfig(
-            resume=True,
-            log_level=runner_cfg.log_level,
-            max_concurrent_steps=runner_cfg.max_concurrent_steps,
-            metastore_raw=runner_cfg.metastore_raw,
-        )
+        runner_cfg = dataclasses.replace(runner_cfg, resume=True)
 
     llm = None
-    if pipeline_cfg.llm_raw is not None:
-        from runlet.llm.config import LLMConfig
+    if pipeline_cfg.llm is not None:
         from runlet.llm.proxy import LLMProxy
 
-        llm_config = LLMConfig.from_dict(pipeline_cfg.llm_raw)
-        llm = LLMProxy.from_config(llm_config)
+        llm = LLMProxy.from_config(pipeline_cfg.llm)
 
     dag = DAG(pipeline_cfg)
     return SequentialRunner(

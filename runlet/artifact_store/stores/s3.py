@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import IO, Any, cast
+from typing import IO, Any, ClassVar, cast
 
 import boto3  # type: ignore[import-untyped]
 from botocore.exceptions import ClientError  # type: ignore[import-untyped]
@@ -16,14 +16,18 @@ from runlet.artifact_store.store import (
     ArtifactStore,
     ArtifactStoreDownloadError,
     ArtifactStoreUploadError,
+    StoreConfig,
+    StoreType,
 )
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class S3Config:
+class S3Config(StoreConfig):
     """S3 connection settings sourced from pipeline.json → store block."""
+
+    TYPE: ClassVar[StoreType] = StoreType.S3
 
     bucket: str
     region: str

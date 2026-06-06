@@ -4,6 +4,7 @@ from runlet.metastore import (
     NoopMetastore,
     RunMetastore,
     build_metastore,
+    build_metastore_config,
 )
 
 
@@ -13,12 +14,12 @@ def test_build_metastore_none_returns_noop():
 
 
 def test_build_metastore_empty_dict_returns_noop():
-    ms = build_metastore({})
+    ms = build_metastore(build_metastore_config({}))
     assert isinstance(ms, NoopMetastore)
 
 
 def test_build_metastore_explicit_noop():
-    ms = build_metastore({"type": "noop"})
+    ms = build_metastore(build_metastore_config({"type": "noop"}))
     assert isinstance(ms, NoopMetastore)
 
 
@@ -63,5 +64,5 @@ def test_noop_close_is_idempotent():
 def test_build_metastore_unknown_type_raises():
     import pytest
 
-    with pytest.raises(ValueError, match="Unknown metastore type"):
-        build_metastore({"type": "oracle"})
+    with pytest.raises(ValueError, match="is not a valid MetastoreType"):
+        build_metastore_config({"type": "oracle"})

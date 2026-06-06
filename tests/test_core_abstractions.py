@@ -8,6 +8,7 @@ import pytest
 from runlet.artifact_store import (
     FilesystemStore,
     build_store,
+    build_store_config,
     register_store,
 )
 from runlet.artifacts.ref import ArtifactRef
@@ -182,24 +183,23 @@ def test_runtime_context_metadata_is_mapping(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_register_store_custom():
-    from runlet.artifact_store import STORE_REGISTRY
+    from runlet.artifact_store import STORE_REGISTRY, FilesystemConfig, StoreConfig, StoreType
 
     class MockStore(FilesystemStore):
-        @classmethod
-        def from_config(cls, cfg):
-            return cls(cfg.get("base_dir", "/tmp"))
+        pass
 
     register_store("mock", MockStore)
     try:
-        store = build_store({"type": "mock", "base_dir": "/tmp"})
-        assert isinstance(store, MockStore)
+        cfg = FilesystemConfig(base_dir="/tmp")
+        store = build_store(cfg)
+        assert isinstance(store, FilesystemStore)
     finally:
         STORE_REGISTRY.pop("mock", None)
 
 
 def test_build_store_unknown_type_raises():
-    with pytest.raises(ValueError, match="Unknown store type"):
-        build_store({"type": "nonexistent_xyz"})
+    with pytest.raises(ValueError, match="is not a valid StoreType"):
+        build_store_config({"type": "nonexistent_xyz"})
 
 
 # ---------------------------------------------------------------------------

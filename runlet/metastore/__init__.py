@@ -6,30 +6,26 @@ the JSONL state file which continues to drive resume logic.
 
 Usage::
 
-    from runlet.metastore import build_metastore
+    from runlet.metastore import build_metastore, build_metastore_config
 
-    metastore = build_metastore({
-        "type": "postgres",
-        "dsn": "postgresql://user:pw@localhost:5432/pipeline_metastore",
-    })
-    metastore.init_schema()
-
-    # SQLite (no external deps — stdlib sqlite3):
-    metastore = build_metastore({
+    cfg = build_metastore_config({
         "type": "sqlite",
         "db_path": "/var/data/pipeline_metastore.db",
     })
+    metastore = build_metastore(cfg)
     metastore.init_schema()
 """
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from runlet.metastore.metastore import (
+    MetastoreConfig,
     MetastoreConnectionError,
     MetastoreError,
     MetastoreSchemaError,
+    MetastoreType,
     RunMetastore,
     RunRecord,
     StepRecord,
@@ -46,53 +42,60 @@ def register_metastore(name: str, cls: type[RunMetastore]) -> None:
     METASTORE_REGISTRY[name] = cls
 
 
-def build_metastore(config: dict[str, Any] | None) -> RunMetastore:
+def build_metastore_config(data: dict[str, Any] | None) -> MetastoreConfig | None:
+    """Parse a raw ``metastore`` config dict into a typed :class:`MetastoreConfig`."""
+    if not data:
+        return None
+    metastore_type = MetastoreType(data.get("type", MetastoreType.NOOP.value))
+    if metastore_type == MetastoreType.NOOP:
+        return None
+    if metastore_type == MetastoreType.SQLITE:
+        from runlet.metastore.stores.sqlite import SqliteConfig
+
+        return SqliteConfig.from_dict(data)
+    if metastore_type == MetastoreType.POSTGRES:
+        from runlet.metastore.stores.postgres import PostgresConfig
+
+        return PostgresConfig.from_dict(data)
+    if metastore_type == MetastoreType.COCKROACHDB:
+        from runlet.metastore.stores.cockroachdb import CockroachDBConfig
+
+        return CockroachDBConfig.from_dict(data)
+    raise ValueError(f"Unhandled metastore type {metastore_type!r}")
+
+
+def build_metastore(config: MetastoreConfig | None) -> RunMetastore:
     """
-    Construct a RunMetastore from a config dict.
+    Construct a :class:`RunMetastore` from a typed :class:`MetastoreConfig`.
 
-    Returns a NoopMetastore when config is None or empty — the runner
-    behaves exactly as before with no metastore configured.
-
-    Config shape::
-
-        {"type": "postgres",     "dsn": "postgresql://..."}
-        {"type": "cockroachdb",  "dsn": "postgresql://crdb-host:26257/db"}
+    Returns a :class:`NoopMetastore` when *config* is ``None``.
     """
-    if not config:
+    if config is None:
         return NoopMetastore()
+    from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
 
-    metastore_type = config.get("type", "noop")
+    if isinstance(config, SqliteConfig):
+        return SqliteMetastore(config)
+    from runlet.metastore.stores.cockroachdb import CockroachDBConfig, CockroachDBMetastore
 
-    if metastore_type == "postgres" and "postgres" not in METASTORE_REGISTRY:
-        from runlet.metastore.stores.postgres import PostgresMetastore
+    if isinstance(config, CockroachDBConfig):
+        return CockroachDBMetastore(config)
+    from runlet.metastore.stores.postgres import PostgresConfig, PostgresMetastore
 
-        METASTORE_REGISTRY["postgres"] = PostgresMetastore
-
-    if metastore_type == "cockroachdb" and "cockroachdb" not in METASTORE_REGISTRY:
-        from runlet.metastore.stores.cockroachdb import CockroachDBMetastore
-
-        METASTORE_REGISTRY["cockroachdb"] = CockroachDBMetastore
-
-    if metastore_type == "sqlite" and "sqlite" not in METASTORE_REGISTRY:
-        from runlet.metastore.stores.sqlite import SqliteMetastore
-
-        METASTORE_REGISTRY["sqlite"] = SqliteMetastore
-
-    cls = METASTORE_REGISTRY.get(metastore_type)
-    if cls is None:
-        known = ", ".join(METASTORE_REGISTRY)
-        raise ValueError(f"Unknown metastore type {metastore_type!r}. Known: {known}")
-
-    return cast(RunMetastore, cast(Any, cls).from_config(config))
+    if isinstance(config, PostgresConfig):
+        return PostgresMetastore(config)
+    raise ValueError(f"Unknown metastore config: {type(config).__name__!r}")
 
 
 __all__ = [
     "METASTORE_REGISTRY",
     "CockroachDBConfig",  # lazy-loaded via __getattr__
     "CockroachDBMetastore",  # lazy-loaded via __getattr__
+    "MetastoreConfig",
     "MetastoreConnectionError",
     "MetastoreError",
     "MetastoreSchemaError",
+    "MetastoreType",
     "NoopMetastore",
     "PostgresConfig",  # lazy-loaded via __getattr__
     "PostgresMetastore",  # lazy-loaded via __getattr__
@@ -102,6 +105,7 @@ __all__ = [
     "SqliteMetastore",  # lazy-loaded via __getattr__
     "StepRecord",
     "build_metastore",
+    "build_metastore_config",
     "register_metastore",
 ]
 

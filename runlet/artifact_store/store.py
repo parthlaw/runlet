@@ -12,7 +12,19 @@ import hashlib
 import os
 import tempfile
 from abc import ABC, abstractmethod
-from typing import IO, Any
+from enum import Enum
+from typing import IO, Any, ClassVar
+
+
+class StoreType(str, Enum):
+    FILESYSTEM = "filesystem"
+    S3 = "s3"
+
+
+class StoreConfig:
+    """Marker base for all artifact store configuration dataclasses."""
+
+    TYPE: ClassVar[StoreType]
 
 
 class ArtifactStore(ABC):

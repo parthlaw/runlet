@@ -36,8 +36,8 @@ registry: dict[str, PipelineEntry] = {}
 def _load_pipeline(config_path: str) -> PipelineEntry:
     config = PipelineConfig.from_file(config_path)
     dag = DAG(config)
-    metastore = build_metastore(config.raw.get("metastore"))
-    store = build_store(config.store_raw)
+    metastore = build_metastore(config.runner.metastore)
+    store = build_store(config.store)
     return PipelineEntry(config=config, dag=dag, metastore=metastore, store=store)
 
 
