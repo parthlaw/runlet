@@ -32,7 +32,7 @@ def test_noop_writes_are_silent():
     ms = NoopMetastore()
     ms.record_run_started("r1", "my-pipe")
     ms.record_step_running("r1", "extract", 1)
-    ms.record_step_success("r1", "extract", 1, 1.5, {"output": {"uri": "x"}}, {"count": 10})
+    ms.record_step_success("r1", "extract", 1, 1.5, {"data_uri": "x", "count": 10})
     ms.record_step_skipped("r1", "load")
     ms.record_run_success("r1")
     ms.close()
@@ -66,3 +66,23 @@ def test_build_metastore_unknown_type_raises():
 
     with pytest.raises(ValueError, match="is not a valid MetastoreType"):
         build_metastore_config({"type": "oracle"})
+
+
+def test_record_run_success_stores_outputs_in_sqlite(tmp_path):
+    """record_run_success() must persist the outputs dict so get_run().outputs is populated."""
+    import pytest
+    from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
+
+    cfg = SqliteConfig(db_path=str(tmp_path / "meta.db"))
+    ms = SqliteMetastore(cfg)
+    ms.init_schema()
+
+    outputs = {"step_a": {"count": 42}, "step_b": {"uri": "s3://bucket/key"}}
+    ms.record_run_started("r-outputs", "pipe")
+    ms.record_run_success("r-outputs", outputs)
+
+    rec = ms.get_run("r-outputs")
+    assert rec is not None
+    assert rec.status == "success"
+    assert rec.outputs == outputs
+    ms.close()

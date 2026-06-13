@@ -31,11 +31,24 @@ class RetryPolicy:
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> RetryPolicy:
+        retry_on: tuple[type[Exception], ...] = (Exception,)
+        retry_on_names = cfg.get("retry_on")
+        if retry_on_names:
+            import builtins
+            resolved = tuple(
+                getattr(builtins, name)
+                for name in retry_on_names
+                if isinstance(getattr(builtins, name, None), type)
+                and issubclass(getattr(builtins, name), Exception)
+            )
+            if resolved:
+                retry_on = resolved
         return cls(
             max_attempts=int(cfg.get("max_attempts", 1)),
             backoff_base=float(cfg.get("backoff_base", 1.0)),
             backoff_multiplier=float(cfg.get("backoff_multiplier", 2.0)),
             jitter=float(cfg.get("jitter", 0.1)),
+            retry_on=retry_on,
         )
 
 

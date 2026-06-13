@@ -60,7 +60,7 @@ class FilesystemStore(ArtifactStore):
         return cls(base_dir=cfg.base_dir, prefix=cfg.prefix)
 
     def build_key(self, run_id: str, step_name: str, filename: str) -> str:
-        return f"{self._prefix}{run_id}/{step_name}/{filename}.jsonl"
+        return f"{self._prefix}{run_id}/{step_name}/{filename}.json"
 
     def to_uri(self, key: str) -> str:
         path = self._path_for_key(key)
@@ -72,7 +72,7 @@ class FilesystemStore(ArtifactStore):
             raise ValueError(f"Not a file URI: {uri}")
         return parsed.path
 
-    def upload_jsonl(self, records: list[dict[str, Any]], key: str) -> str:
+    def upload_json(self, data: dict[str, Any], key: str) -> str:
         path = self._path_for_key(key)
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -80,8 +80,8 @@ class FilesystemStore(ArtifactStore):
                 dir=os.path.dirname(path), prefix=".tmp_"
             )
             try:
-                with os.fdopen(tmp_fd, "wb") as fh:
-                    fh.write(_encode_jsonl(records))
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                    fh.write(json.dumps(data, ensure_ascii=False, indent=2))
                 os.replace(tmp_path, path)
             except Exception:
                 with contextlib.suppress(OSError):
@@ -89,26 +89,22 @@ class FilesystemStore(ArtifactStore):
                 raise
         except OSError as exc:
             raise ArtifactStoreUploadError(
-                f"Failed to write JSONL to {path}: {exc}"
+                f"Failed to write JSON to {path}: {exc}"
             ) from exc
 
         uri = self.to_uri(key)
-        logger.info("Uploaded %d record(s) → %s", len(records), uri)
+        logger.debug("Wrote JSON → %s", uri)
         return uri
 
-    def download_jsonl(self, uri: str) -> list[dict[str, Any]]:
+    def download_json(self, uri: str) -> dict[str, Any]:
         path = self.uri_to_path(uri)
         try:
             with open(path, encoding="utf-8") as fh:
-                raw = fh.read()
+                return json.loads(fh.read())
         except OSError as exc:
             raise ArtifactStoreDownloadError(
-                f"Failed to read JSONL from {uri}: {exc}"
+                f"Failed to read JSON from {uri}: {exc}"
             ) from exc
-
-        records = _decode_jsonl(raw)
-        logger.info("Downloaded %d record(s) ← %s", len(records), uri)
-        return records
 
     def exists(self, uri: str) -> bool:
         return os.path.isfile(self.uri_to_path(uri))
@@ -244,15 +240,3 @@ class FilesystemStore(ArtifactStore):
         return self._safe_resolve(key)
 
 
-def _encode_jsonl(records: list[dict[str, Any]]) -> bytes:
-    lines = (json.dumps(record, ensure_ascii=False) for record in records)
-    return "\n".join(lines).encode("utf-8")
-
-
-def _decode_jsonl(raw: str) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for line in raw.splitlines():
-        line = line.strip()
-        if line:
-            records.append(json.loads(line))
-    return records

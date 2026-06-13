@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from runlet.orchestrator.errors import ConfigValidationError
 from runlet.orchestrator.models import RunnerConfig
 
 ALLOWED_CONDITION_OPS = frozenset({"==", "!=", ">", "<", ">=", "<="})
+_SAFE_STEP_NAME = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,11 @@ class StepConfig:
                 raise ConfigValidationError(
                     f"Step config missing required field '{key}': {data}"
                 )
+        if not _SAFE_STEP_NAME.match(data["name"]):
+            raise ConfigValidationError(
+                f"Invalid step name {data['name']!r}. "
+                "Only alphanumeric, hyphen, and underscore are allowed (max 128 chars)."
+            )
         depends_on = tuple(data.get("depends_on", []))
         condition = None
         if data.get("condition") is not None:

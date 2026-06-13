@@ -1,11 +1,11 @@
 """End-to-end runner tests using FilesystemStore."""
 from __future__ import annotations
 
-from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
-from runlet import BaseArtifact, BaseStep, FilesystemStore, artifact
+from runlet import BaseStep, FilesystemStore
 from runlet.orchestrator.config import PipelineConfig
 from runlet.orchestrator.context import PipelineContext
 from runlet.orchestrator.dag import DAG
@@ -13,32 +13,21 @@ from runlet.orchestrator.models import RunnerConfig
 from runlet.orchestrator.runner import SequentialRunner
 
 
-@artifact(version=1)
-class CountRecord(BaseArtifact):
-    value: int
-
-
-@artifact(version=1)
-class SumRecord(BaseArtifact):
-    total: int
-
-
 class ProducerStep(BaseStep):
-    def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-        for i in range(3):
-            yield CountRecord(value=i)
+    def execute(self, context: PipelineContext) -> dict[str, Any]:
+        return {"values": [0, 1, 2], "count": 3}
 
 
 class ConsumerStep(BaseStep):
-    def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-        total = sum(r.value for r in context.iter_artifacts("producer", CountRecord))
-        yield SumRecord(total=total)
+    def execute(self, context: PipelineContext) -> dict[str, Any]:
+        upstream = context.get_output("producer")
+        total = sum(upstream["values"])
+        return {"total": total}
 
 
 class FailingStep(BaseStep):
-    def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+    def execute(self, context: PipelineContext) -> dict[str, Any]:
         raise RuntimeError("intentional failure")
-        yield  # make it a generator
 
 
 def _build_pipeline_config(store_dir: str, steps_cfg: list) -> dict:
@@ -56,18 +45,6 @@ def store_dir(tmp_path):
 
 def test_two_step_pipeline_success(store_dir, monkeypatch):
     # Patch dynamic import so runner can find our test steps
-    original_import = __import__
-
-    def fake_import(name, *args, **kwargs):
-        if name == "test_steps":
-            import types
-            m = types.ModuleType("test_steps")
-            m.ProducerStep = ProducerStep
-            m.ConsumerStep = ConsumerStep
-            return m
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.__import__", fake_import)
     import importlib
     original_import_module = importlib.import_module
 
@@ -137,6 +114,46 @@ def test_resume_skips_completed_steps(store_dir, monkeypatch):
     assert result2.steps_executed == []
 
 
+def test_downstream_reads_upstream_output(store_dir, monkeypatch):
+    """ConsumerStep must be able to read ProducerStep's output dict."""
+    received: list[dict] = []
+
+    class CapturingConsumer(BaseStep):
+        def execute(self, context: PipelineContext) -> dict[str, Any]:
+            out = context.get_output("producer")
+            received.append(out)
+            return {"captured": True}
+
+    import importlib
+    original = importlib.import_module
+
+    def fake(name, *args, **kwargs):
+        if name == "test_steps":
+            import types
+            m = types.ModuleType("test_steps")
+            m.ProducerStep = ProducerStep
+            m.CapturingConsumer = CapturingConsumer
+            return m
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib, "import_module", fake)
+
+    raw = _build_pipeline_config(store_dir, [
+        {"name": "producer", "module": "test_steps", "class": "ProducerStep", "depends_on": []},
+        {
+            "name": "consumer", "module": "test_steps", "class": "CapturingConsumer",
+            "depends_on": ["producer"],
+        },
+    ])
+    cfg = PipelineConfig.from_dict(raw)
+    dag = DAG(cfg)
+    runner = SequentialRunner(dag, RunnerConfig())
+    result = runner.run("run004")
+
+    assert result.success
+    assert received == [{"values": [0, 1, 2], "count": 3}]
+
+
 def test_failing_step_returns_failed_result(store_dir, monkeypatch):
     import importlib
     original_import_module = importlib.import_module
@@ -167,8 +184,3 @@ def test_failing_step_returns_failed_result(store_dir, monkeypatch):
     assert not result.success
     assert result.failed_step == "failing"
     assert "producer" in result.steps_executed
-
-    # Producer artifacts should still exist
-    store = FilesystemStore(store_dir)
-    producer_uri = store.to_uri("run003/producer/output.jsonl")
-    assert store.exists(producer_uri) or True  # path depends on runner internals

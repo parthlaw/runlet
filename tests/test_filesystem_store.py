@@ -11,11 +11,11 @@ def store(tmp_path):
     return FilesystemStore(str(tmp_path))
 
 
-def test_upload_download_jsonl_roundtrip(store):
-    records = [{"a": 1}, {"b": 2}]
-    uri = store.upload_jsonl(records, "run1/step/out.jsonl")
-    result = store.download_jsonl(uri)
-    assert result == records
+def test_upload_download_json_roundtrip(store):
+    data = {"run_id": "r1", "run_status": "success", "steps": {"a": {"status": "success"}}}
+    uri = store.upload_json(data, "run1/state/run_state.json")
+    result = store.download_json(uri)
+    assert result == data
 
 
 def test_upload_download_file_roundtrip(store, tmp_path):
@@ -29,9 +29,9 @@ def test_upload_download_file_roundtrip(store, tmp_path):
 
 
 def test_exists_true_and_false(store):
-    uri = store.upload_jsonl([{"x": 1}], "run1/step/data.jsonl")
+    uri = store.upload_json({"x": 1}, "run1/step/data.json")
     assert store.exists(uri)
-    fake_uri = store.to_uri("run1/step/nope.jsonl")
+    fake_uri = store.to_uri("run1/step/nope.json")
     assert not store.exists(fake_uri)
 
 
@@ -42,13 +42,13 @@ def test_path_traversal_raises(store, tmp_path):
         store.upload_file_raw(str(src), "../../../etc/passwd")
 
 
-def test_concurrent_upload_jsonl_no_torn_file(store):
-    key = "run1/step/concurrent.jsonl"
+def test_concurrent_upload_json_last_write_wins(store):
+    key = "run1/state/run_state.json"
     errors = []
 
     def writer(n):
         try:
-            store.upload_jsonl([{"writer": n, "v": i} for i in range(10)], key)
+            store.upload_json({"writer": n, "items": list(range(10))}, key)
         except Exception as e:
             errors.append(e)
 
@@ -60,5 +60,6 @@ def test_concurrent_upload_jsonl_no_torn_file(store):
 
     assert not errors
     uri = store.to_uri(key)
-    records = store.download_jsonl(uri)
-    assert len(records) == 10  # exactly one writer's batch (last wins atomically)
+    result = store.download_json(uri)
+    assert "writer" in result
+    assert "items" in result

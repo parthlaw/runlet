@@ -1,5 +1,5 @@
 """
-runlet — DAG pipeline orchestration with JSONL streaming and pluggable artifact storage.
+runlet — DAG pipeline orchestration with pluggable artifact storage.
 """
 
 from runlet.artifact_store import (
@@ -12,12 +12,6 @@ from runlet.artifact_store import (
     build_store,
     register_store,
 )
-from runlet.artifacts import (
-    ArtifactRef,
-    ArtifactSerializer,
-    BaseArtifact,
-    artifact,
-)
 from runlet.logging import setup_logging
 from runlet.metastore import (
     NoopMetastore,
@@ -29,19 +23,17 @@ from runlet.orchestrator.config import PipelineConfig
 from runlet.orchestrator.context import PipelineContext, RuntimeContext
 from runlet.orchestrator.dag import DAG
 from runlet.orchestrator.models import RunnerConfig, RunResult
+from runlet.orchestrator.executor import ThreadedExecutor
 from runlet.orchestrator.runner import SequentialRunner, build_runner
 from runlet.orchestrator.state import RunState, RunStatus, StepStatus
 from runlet.steps.base import BaseStep
 
 __all__ = [
     "DAG",
-    "ArtifactRef",
-    "ArtifactSerializer",
     "ArtifactStore",
     "ArtifactStoreDownloadError",
     "ArtifactStoreError",
     "ArtifactStoreUploadError",
-    "BaseArtifact",
     "BaseStep",
     "CockroachDBConfig",  # lazy-loaded via __getattr__
     "CockroachDBMetastore",  # lazy-loaded via __getattr__
@@ -63,7 +55,7 @@ __all__ = [
     "S3Config",  # lazy-loaded via __getattr__
     "SequentialRunner",
     "StepStatus",
-    "artifact",
+    "ThreadedExecutor",
     "build_metastore",
     "build_runner",
     "build_runtime_stores",

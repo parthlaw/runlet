@@ -5,13 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build --outDir ../pipeline_runner/ui/static --emptyOutDir",
+    "build": "tsc && vite build --outDir ../runlet/ui/static --emptyOutDir",
     "preview": "vite preview"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.2",
     "@tanstack/react-query": "^5.56.2",
+    "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.10.7",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^1.18.0",
+    "papaparse": "^5.5.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-flow-renderer": "^10.3.17",
@@ -19,6 +23,7 @@
     "reactflow": "^11.11.4"
   },
   "devDependencies": {
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

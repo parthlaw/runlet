@@ -38,8 +38,7 @@ class NoopMetastore(RunMetastore):
         step_name: str,
         attempt: int,
         duration_seconds: float,
-        paths: dict[str, Any],
-        schema_info: dict[str, Any],
+        output: dict[str, Any],
     ) -> None:
         pass
 
