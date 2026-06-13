@@ -21,10 +21,10 @@ from runlet.orchestrator.dag import DAG
 from runlet.orchestrator.errors import ConditionEvaluationError
 from runlet.orchestrator.executor import ThreadedExecutor
 from runlet.orchestrator.models import RunnerConfig, RunResult
+from runlet.orchestrator.registry import ConfigStepRegistry, StepRegistry
 from runlet.orchestrator.retry import DEFAULT_POLICY, RetryPolicy
 from runlet.orchestrator.state import RunState, StepStatus
 from runlet.orchestrator.writer_context import WriterContext, build_context
-from runlet.steps.loader import load_step
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +52,15 @@ class SequentialRunner:
         initial_metadata: dict[str, Any] | None = None,
         llm: Any | None = None,
         metastore: Any | None = None,
+        step_registry: StepRegistry | None = None,
     ) -> None:
         self._dag = dag
         self._config = runner_config or dag.config.runner
         self._initial_metadata: dict[str, Any] = initial_metadata or {}
         self._cancel_event = threading.Event()
         self._llm = llm
+        self._registry: StepRegistry = step_registry or ConfigStepRegistry(dag.config)
+        self._registry.validate(dag.config.step_names)
         if metastore is not None:
             self._metastore = metastore
         else:
@@ -152,7 +155,7 @@ class SequentialRunner:
                     raise
 
             try:
-                step_instance = load_step(step_cfg)
+                step_instance = self._registry.get(step_name)
             except Exception as exc:
                 error_msg = _format_error(step_name, exc)
                 state.mark_step_failed(step_name=step_name, error=error_msg, duration_seconds=0.0)

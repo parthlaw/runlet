@@ -24,13 +24,19 @@ from runlet.orchestrator.context import PipelineContext, RuntimeContext
 from runlet.orchestrator.dag import DAG
 from runlet.orchestrator.models import RunnerConfig, RunResult
 from runlet.orchestrator.executor import ThreadedExecutor
+from runlet.orchestrator.registry import ConfigStepRegistry, PrebuiltStepRegistry, StepRegistry
 from runlet.orchestrator.runner import SequentialRunner, build_runner
 from runlet.orchestrator.state import RunState, RunStatus, StepStatus
+from runlet.pipeline import Pipeline
 from runlet.steps.base import BaseStep
 
 __all__ = [
     "DAG",
     "ArtifactStore",
+    "ConfigStepRegistry",
+    "Pipeline",
+    "PrebuiltStepRegistry",
+    "StepRegistry",
     "ArtifactStoreDownloadError",
     "ArtifactStoreError",
     "ArtifactStoreUploadError",

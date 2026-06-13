@@ -19,6 +19,7 @@ from runlet.artifact_store import ArtifactStore, build_store
 from runlet.metastore import RunMetastore, build_metastore
 from runlet.orchestrator.config import PipelineConfig
 from runlet.orchestrator.dag import DAG
+from runlet.pipeline import Pipeline
 
 
 @dataclasses.dataclass
@@ -41,10 +42,24 @@ def _load_pipeline(config_path: str) -> PipelineEntry:
     return PipelineEntry(config=config, dag=dag, metastore=metastore, store=store)
 
 
-def build_app(config_paths: list[str]) -> FastAPI:
+def _entry_from_pipeline(p: Pipeline) -> PipelineEntry:
+    config = p._build_config()
+    dag = DAG(config)
+    metastore = build_metastore(config.runner.metastore)
+    store = build_store(config.store)
+    return PipelineEntry(config=config, dag=dag, metastore=metastore, store=store)
+
+
+def build_app(
+    config_paths: list[str] | None = None,
+    pipelines: list[Pipeline] | None = None,
+) -> FastAPI:
     global registry
-    for path in config_paths:
+    for path in config_paths or []:
         entry = _load_pipeline(path)
+        registry[entry.config.name] = entry
+    for p in pipelines or []:
+        entry = _entry_from_pipeline(p)
         registry[entry.config.name] = entry
 
     app = FastAPI(title="Pipeline Runner", docs_url="/api/docs")
