@@ -66,6 +66,10 @@ def build_runtime_stores(
 
     ``store`` is scoped to pipeline artifacts (step data, run state).
     ``upload_store`` is unscoped for reading source files and writing final results.
+
+    ``store_overrides`` carries per-run infrastructure config (bucket, prefix)
+    computed by the caller before the runner is created — never derived from
+    step data. Keys: ``bucket`` (str), ``prefix`` (str).
     """
     from runlet.artifact_store.stores.s3 import S3ArtifactStore, S3Config
 

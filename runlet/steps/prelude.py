@@ -1,5 +1,3 @@
-"""PreludeStep — a BaseStep variant that runs before the DAG topology begins."""
-
 from __future__ import annotations
 
 from abc import abstractmethod

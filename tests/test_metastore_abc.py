@@ -61,8 +61,12 @@ def test_noop_close_is_idempotent():
     ms.close()
 
 
-def test_build_metastore_unknown_type_raises():
-    import pytest
+def test_noop_record_run_success_accepts_outputs():
+    ms = NoopMetastore()
+    ms.record_run_started("r3", "pipe")
+    # must not raise — outputs kwarg is part of the contract
+    ms.record_run_success("r3", outputs={"score": 0.9, "download_url": "s3://bucket/key"})
+    ms.close()
 
     with pytest.raises(ValueError, match="is not a valid MetastoreType"):
         build_metastore_config({"type": "oracle"})

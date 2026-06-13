@@ -436,7 +436,20 @@ def build_runner(
     resume: bool = False,
     initial_metadata: dict[str, Any] | None = None,
 ) -> SequentialRunner:
-    """Factory: load a pipeline JSON config and return a ready-to-run SequentialRunner."""
+    """Factory: load a pipeline JSON config and return a ready-to-run SequentialRunner.
+
+    Parameters
+    ----------
+    step_inputs:
+        Data for steps — accessible via ``context.metadata`` during execution.
+        Should contain only domain/business values (e.g. ``source_key``,
+        ``user_id``, ``pages``). Infrastructure config (bucket, prefix) belongs
+        in ``store_overrides``, not here.
+    store_overrides:
+        Per-run infrastructure overrides for the artifact store. Keys:
+        ``bucket`` (str) and ``prefix`` (str). The caller computes these from
+        business rules before constructing the runner.
+    """
     pipeline_cfg = PipelineConfig.from_file(config_path)
 
     runner_cfg = pipeline_cfg.runner
