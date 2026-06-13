@@ -64,7 +64,7 @@ def build_runtime_stores(
 
     Returns (store, upload_store, store_prefix).
 
-    ``store`` is scoped to pipeline artifacts (intermediate JSONL, run state).
+    ``store`` is scoped to pipeline artifacts (step data, run state).
     ``upload_store`` is unscoped for reading source files and writing final results.
     """
     from runlet.artifact_store.stores.s3 import S3ArtifactStore, S3Config

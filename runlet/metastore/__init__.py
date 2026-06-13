@@ -2,7 +2,7 @@
 runlet.metastore — DB-agnostic lifecycle metadata store.
 
 Tracks run and step status in SQL for cross-run queries. Additive to
-the JSONL state file which continues to drive resume logic.
+the JSON run-state file which continues to drive resume logic.
 
 Usage::
 

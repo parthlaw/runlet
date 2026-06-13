@@ -1,39 +1,33 @@
 """
 RuntimeContext — read-only view of pipeline state passed to step execute().
 
-Steps can read artifact paths and stream upstream records, but cannot write
-to the context. Write operations live in WriterContext (held by the runner).
+Steps can read outputs from completed upstream steps and access the artifact
+store for large-data I/O. Write operations live in WriterContext (held by the runner).
 """
 
 from __future__ import annotations
 
-import contextlib
-import json
 import logging
-import os
-import tempfile
 import threading
-from collections.abc import Iterator, Mapping
-from typing import Any, TypeVar
+from collections.abc import Mapping
+from typing import Any
 
 from runlet.artifact_store import ArtifactStore
-from runlet.artifacts import ArtifactSerializer, BaseArtifact
-from runlet.artifacts.errors import SchemaError
-from runlet.artifacts.ref import ArtifactRef
-from runlet.artifacts.registry import ArtifactRegistry
-from runlet.artifacts.registry import registry as _global_artifact_registry
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T", bound=BaseArtifact)
 
 
 class RuntimeContext:
     """
     Read-only context passed to every step during execution.
 
-    Exposes upstream artifact paths, metadata, streaming helpers, and an
-    optional LLM proxy (context.llm) for steps that need LLM calls.
+    Exposes upstream step outputs, pipeline metadata, direct artifact store
+    access, and an optional LLM proxy (context.llm) for agentic steps.
+
+    A step's output is a plain JSON-serializable dict stored in SQL.
+    Steps that need to pass large data write it to the artifact store and
+    put the URI in their output dict. See :mod:`runlet.utils.streaming`
+    for format-specific helpers.
     """
 
     def __init__(
@@ -44,22 +38,31 @@ class RuntimeContext:
         store: ArtifactStore,
         upload_store: ArtifactStore,
         metadata: dict[str, Any],
-        artifact_registry: ArtifactRegistry | None = None,
         llm: Any | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         self.run_id = run_id
         self.pipeline_name = pipeline_name
         self.store = store
         self.upload_store = upload_store
         self._metadata: dict[str, Any] = metadata
-        self.artifact_registry: ArtifactRegistry = artifact_registry or _global_artifact_registry
-        self._paths: dict[str, dict[str, ArtifactRef]] = {}
-        self._paths_lock = threading.RLock()
+        self._outputs: dict[str, dict[str, Any]] = {}
+        self._outputs_lock = threading.RLock()
         self._llm = llm
+        self._cancel_event: threading.Event = cancel_event or threading.Event()
+
+    @property
+    def artifact_store(self) -> ArtifactStore:
+        """Direct access to the artifact store for large-data I/O."""
+        return self.store
 
     @property
     def metadata(self) -> Mapping[str, Any]:
         return self._metadata
+
+    def is_cancelled(self) -> bool:
+        """Return True if the runner has been cancelled or a step has timed out."""
+        return self._cancel_event.is_set()
 
     @property
     def llm(self) -> Any:
@@ -75,165 +78,35 @@ class RuntimeContext:
             )
         return self._llm
 
-    def get_path(self, step_name: str, output_name: str = "output") -> ArtifactRef:
+    def get_output(self, step_name: str) -> dict[str, Any]:
         """
-        Retrieve the ArtifactRef for a specific step output.
+        Return the output dict produced by a completed upstream step.
 
-        Raises KeyError if no path has been registered for (step_name, output_name).
+        Raises KeyError if the step has not completed or produced no output.
         """
-        with self._paths_lock:
-            try:
-                return self._paths[step_name][output_name]
-            except KeyError:
+        with self._outputs_lock:
+            if step_name not in self._outputs:
                 raise KeyError(
-                    f"No artifact registered for step='{step_name}', output='{output_name}'. "
-                    f"Registered paths: {self.list_paths()}"
-                ) from None
-
-    def has_path(self, step_name: str, output_name: str = "output") -> bool:
-        with self._paths_lock:
-            return output_name in self._paths.get(step_name, {})
-
-    def list_paths(self) -> dict[str, dict[str, ArtifactRef]]:
-        with self._paths_lock:
-            return {step: dict(outputs) for step, outputs in self._paths.items()}
-
-    def read_first_record(
-        self,
-        step_name: str,
-        output_name: str = "output",
-    ) -> dict[str, Any]:
-        """
-        Return the first data record from a step's JSONL artifact as a plain dict.
-
-        Uses a Range GET (first 4 KB) for non-compressed artifacts, avoiding a
-        full file download.
-        """
-        ref = self.get_path(step_name, output_name)
-
-        if not ref.is_compressed:
-            logger.debug(
-                "Reading first record (range): %s/%s → %s", step_name, output_name, ref.uri
-            )
-            try:
-                chunk = self.store.download_bytes_range(ref.uri, 0, 4096)
-                lines = chunk.decode("utf-8").splitlines()
-                if not lines:
-                    raise ValueError(
-                        f"Artifact for step '{step_name}' output '{output_name}' is empty."
-                    )
-                for line in lines:
-                    line = line.strip()
-                    if line:
-                        try:
-                            parsed = json.loads(line)
-                        except json.JSONDecodeError:
-                            break  # record cut off by 4 KB window; fall through to full download
-                        if not isinstance(parsed, dict):
-                            raise ValueError(
-                                f"First record for step '{step_name}' must be a JSON object."
-                            )
-                        return parsed
-            except NotImplementedError:
-                pass
-
-        return self._read_first_record_full(step_name, output_name, ref)
-
-    def _read_first_record_full(
-        self, step_name: str, output_name: str, ref: ArtifactRef
-    ) -> dict[str, Any]:
-        from runlet.artifacts.io import open_artifact_read
-
-        suffix = ".jsonl.gz" if ref.is_compressed else ".jsonl"
-        tmp_path = os.path.join(
-            tempfile.gettempdir(),
-            f"{self.run_id}_{step_name}_{output_name}_cond{suffix}",
-        )
-        self.store.download_file(ref.uri, tmp_path)
-        logger.debug("Reading first record (full): %s/%s → %s", step_name, output_name, tmp_path)
-        try:
-            with open_artifact_read(tmp_path) as fh:
-                for line in fh:
-                    line = line.strip()
-                    if line:
-                        parsed = json.loads(line)
-                        if not isinstance(parsed, dict):
-                            raise ValueError(
-                                f"First record for step '{step_name}' must be a JSON object."
-                            )
-                        return parsed
-                raise ValueError(
-                    f"Artifact for step '{step_name}' output '{output_name}' has no data records."
+                    f"No output registered for step '{step_name}'. "
+                    f"Available: {list(self._outputs)}"
                 )
-        finally:
-            with contextlib.suppress(OSError):
-                os.remove(tmp_path)
+            return dict(self._outputs[step_name])
 
-    def iter_artifacts(
-        self,
-        step_name: str,
-        artifact_cls: type[T],
-        output_name: str = "output",
-        *,
-        strict: bool = True,
-    ) -> Iterator[T]:
-        """
-        Stream typed records from an upstream step's JSONL artifact.
+    def has_output(self, step_name: str) -> bool:
+        """Return True if a completed step with registered output exists."""
+        with self._outputs_lock:
+            return step_name in self._outputs
 
-        Parameters
-        ----------
-        strict:
-            If True (default) raise SchemaError on a schema name mismatch.
-            Pass False to log a warning and continue.
-        """
-        from runlet.artifacts.io import open_artifact_read
-
-        ref = self.get_path(step_name, output_name)
-        written_version = ref.schema_version
-
-        if ref.schema_name and ref.schema_name != artifact_cls.SCHEMA_NAME:
-            msg = (
-                f"Schema mismatch for step {step_name!r}: "
-                f"expected {artifact_cls.SCHEMA_NAME!r} but artifact has "
-                f"{ref.schema_name!r}"
-            )
-            if strict:
-                raise SchemaError(msg)
-            logger.warning(msg)
-
-        suffix = ".jsonl.gz" if ref.is_compressed else ".jsonl"
-        tmp_path = os.path.join(
-            tempfile.gettempdir(),
-            f"{self.run_id}_{step_name}_{output_name}_dl{suffix}",
-        )
-
-        self.store.download_file(ref.uri, tmp_path)
-        logger.debug("Streaming typed artifact: %s/%s → %s", step_name, output_name, tmp_path)
-
-        try:
-            with open_artifact_read(tmp_path) as fh:
-                for line in fh:
-                    line = line.strip()
-                    if line:
-                        record = ArtifactSerializer.load_record(
-                            line,
-                            artifact_cls,
-                            written_version,
-                        )
-                        yield record
-        finally:
-            with contextlib.suppress(OSError):
-                os.remove(tmp_path)
+    def list_outputs(self) -> dict[str, dict[str, Any]]:
+        with self._outputs_lock:
+            return {step: dict(out) for step, out in self._outputs.items()}
 
     def to_dict(self) -> dict[str, Any]:
-        with self._paths_lock:
-            paths_serialized = {
-                step: {out: ref.to_dict() for out, ref in outputs.items()}
-                for step, outputs in self._paths.items()
-            }
+        with self._outputs_lock:
+            outputs_snapshot = {step: dict(out) for step, out in self._outputs.items()}
         return {
             "run_id": self.run_id,
             "pipeline_name": self.pipeline_name,
-            "paths": paths_serialized,
+            "outputs": outputs_snapshot,
             "metadata": dict(self._metadata),
         }

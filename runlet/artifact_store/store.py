@@ -1,8 +1,5 @@
 """
 ArtifactStore — abstract interface for pipeline artifact persistence.
-
-All pipeline artifacts are stored as .jsonl files. Each record is a
-JSON-serialisable dict on its own line (JSON Lines format).
 """
 
 from __future__ import annotations
@@ -28,14 +25,14 @@ class StoreConfig:
 
 
 class ArtifactStore(ABC):
-    """Abstract store for pipeline JSONL artifacts and related files."""
+    """Abstract store for pipeline artifacts and large data files."""
 
     @abstractmethod
     def build_key(self, run_id: str, step_name: str, filename: str) -> str:
         """
         Construct a canonical object key.
 
-        Pattern: {prefix}{run_id}/{step_name}/{filename}.jsonl
+        Pattern: {prefix}{run_id}/{step_name}/{filename}.json
         """
 
     @abstractmethod
@@ -43,12 +40,12 @@ class ArtifactStore(ABC):
         """Return the full URI for *key* in this store's namespace."""
 
     @abstractmethod
-    def upload_jsonl(self, records: list[dict[str, Any]], key: str) -> str:
-        """Serialise *records* as JSON Lines and persist. Returns the object URI."""
+    def upload_json(self, data: dict[str, Any], key: str) -> str:
+        """Serialise *data* as JSON and persist atomically. Returns the object URI."""
 
     @abstractmethod
-    def download_jsonl(self, uri: str) -> list[dict[str, Any]]:
-        """Download and parse a JSONL object at *uri*."""
+    def download_json(self, uri: str) -> dict[str, Any]:
+        """Download and parse a JSON object at *uri*. Returns a dict."""
 
     @abstractmethod
     def exists(self, uri: str) -> bool:

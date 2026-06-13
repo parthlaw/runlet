@@ -2,7 +2,7 @@
 RunMetastore — abstract interface for pipeline lifecycle metadata.
 
 The metastore tracks run and step status for querying purposes.
-It is additive: the JSONL state file continues to drive resume logic;
+It is additive: the JSON run-state file continues to drive resume logic;
 the metastore is for history and cross-run queries.
 """
 
@@ -47,8 +47,7 @@ class StepRecord:
     attempt: int
     duration_seconds: float | None
     error: str | None
-    paths: dict[str, Any]
-    schema_info: dict[str, Any]
+    output: dict[str, Any]
     recorded_at: datetime.datetime
 
 
@@ -107,8 +106,7 @@ class RunMetastore(ABC):
         step_name: str,
         attempt: int,
         duration_seconds: float,
-        paths: dict[str, Any],
-        schema_info: dict[str, Any],
+        output: dict[str, Any],
     ) -> None:
         """Upsert step row for (run_id, step_name, attempt) with status='success'."""
 
