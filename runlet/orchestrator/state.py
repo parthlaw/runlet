@@ -100,7 +100,8 @@ class RunState:
         serialized = json.dumps(output)
         if len(serialized) > _OUTPUT_SIZE_WARN_BYTES:
             logger.warning(
-                "Step '%s' output is %d bytes. Store large data in the artifact store and return a URI instead.",
+                "Step '%s' output is %d bytes. Store large data in the artifact store"
+                " and return a URI instead.",
                 step_name,
                 len(serialized),
             )

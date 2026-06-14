@@ -14,7 +14,6 @@ from runlet.orchestrator.registry import (
 from runlet.steps.base import BaseStep
 from runlet.steps.loader import StepImportError
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -83,8 +82,8 @@ def test_prebuilt_stores_copy_of_instances():
 
 def test_config_registry_get_loads_valid_step(tmp_path):
     """ConfigStepRegistry.get() dynamically imports and instantiates the class."""
-    from runlet.orchestrator.config.models import PipelineConfig, StepConfig
     from runlet.artifact_store import build_store_config
+    from runlet.orchestrator.config.models import PipelineConfig, StepConfig
 
     step_cfg = StepConfig(
         name="const",
@@ -105,8 +104,8 @@ def test_config_registry_get_loads_valid_step(tmp_path):
 
 
 def test_config_registry_get_raises_on_bad_module(tmp_path):
-    from runlet.orchestrator.config.models import PipelineConfig, StepConfig
     from runlet.artifact_store import build_store_config
+    from runlet.orchestrator.config.models import PipelineConfig, StepConfig
 
     step_cfg = StepConfig(
         name="bad",
@@ -126,8 +125,8 @@ def test_config_registry_get_raises_on_bad_module(tmp_path):
 
 def test_config_registry_get_fresh_instance_each_call(tmp_path):
     """ConfigStepRegistry creates a new instance per call (preserves original behavior)."""
-    from runlet.orchestrator.config.models import PipelineConfig, StepConfig
     from runlet.artifact_store import build_store_config
+    from runlet.orchestrator.config.models import PipelineConfig, StepConfig
 
     step_cfg = StepConfig(
         name="const",
@@ -245,8 +244,8 @@ def test_pipeline_decorator_returns_original_function(tmp_path):
 
 def test_pipeline_validate_catches_incomplete_registry(tmp_path):
     """SequentialRunner.validate() fires for PrebuiltStepRegistry on __init__."""
-    from runlet.orchestrator.config.models import PipelineConfig, StepConfig
     from runlet.artifact_store import build_store_config
+    from runlet.orchestrator.config.models import PipelineConfig, StepConfig
     from runlet.orchestrator.dag import DAG
     from runlet.orchestrator.runner import SequentialRunner
 

@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from runlet import BaseStep, FilesystemStore
+from runlet import BaseStep
 from runlet.orchestrator.config import PipelineConfig
 from runlet.orchestrator.context import PipelineContext
 from runlet.orchestrator.dag import DAG
@@ -109,12 +109,16 @@ def test_resume_skips_completed_steps(store_dir, tmp_path, monkeypatch):
     dag = DAG(cfg)
 
     # First run — populates metastore; runner closes the connection when done.
-    runner = SequentialRunner(dag, RunnerConfig(), metastore=SqliteMetastore(SqliteConfig(db_path=db_path)))
+    runner = SequentialRunner(
+        dag, RunnerConfig(), metastore=SqliteMetastore(SqliteConfig(db_path=db_path))
+    )
     result1 = runner.run("run002")
     assert result1.success
 
     # Resume run — opens a fresh connection to the same file and reads prior step records.
-    runner2 = SequentialRunner(dag, RunnerConfig(resume=True), metastore=SqliteMetastore(SqliteConfig(db_path=db_path)))
+    runner2 = SequentialRunner(
+        dag, RunnerConfig(resume=True), metastore=SqliteMetastore(SqliteConfig(db_path=db_path))
+    )
     result2 = runner2.run("run002")
     assert result2.steps_skipped == ["producer", "consumer"]
     assert result2.steps_executed == []

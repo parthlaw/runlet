@@ -73,7 +73,11 @@ def write_jsonl(
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix)
     os.close(tmp_fd)
     try:
-        open_fn = gzip.open(tmp_path, "wt", encoding="utf-8") if compress else open(tmp_path, "w", encoding="utf-8")
+        open_fn = (
+            gzip.open(tmp_path, "wt", encoding="utf-8")  # noqa: SIM115
+            if compress
+            else open(tmp_path, "w", encoding="utf-8")  # noqa: SIM115
+        )
         with open_fn as fh:
             for record in records:
                 if isinstance(record, BaseModel):
@@ -111,7 +115,11 @@ def iter_jsonl(
     os.close(tmp_fd)
     try:
         store.download_file(uri, tmp_path)
-        open_fn = gzip.open(tmp_path, "rt", encoding="utf-8") if is_gzip else open(tmp_path, encoding="utf-8")
+        open_fn = (
+            gzip.open(tmp_path, "rt", encoding="utf-8")  # noqa: SIM115
+            if is_gzip
+            else open(tmp_path, encoding="utf-8")  # noqa: SIM115
+        )
         with open_fn as fh:
             for line in fh:
                 line = line.strip()
@@ -137,7 +145,11 @@ def iter_jsonl_dicts(
     os.close(tmp_fd)
     try:
         store.download_file(uri, tmp_path)
-        open_fn = gzip.open(tmp_path, "rt", encoding="utf-8") if is_gzip else open(tmp_path, encoding="utf-8")
+        open_fn = (
+            gzip.open(tmp_path, "rt", encoding="utf-8")  # noqa: SIM115
+            if is_gzip
+            else open(tmp_path, encoding="utf-8")  # noqa: SIM115
+        )
         with open_fn as fh:
             for line in fh:
                 line = line.strip()

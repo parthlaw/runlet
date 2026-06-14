@@ -26,7 +26,7 @@ class StepRegistry(ABC):
         """Return the step instance for *name*. Raise StepImportError if not found."""
         ...
 
-    def validate(self, step_names: list[str]) -> None:
+    def validate(self, step_names: list[str]) -> None:  # noqa: B027
         """
         Called by SequentialRunner.__init__ to assert all DAG steps are resolvable.
         Default is a no-op; subclasses override to fail-fast on missing steps.

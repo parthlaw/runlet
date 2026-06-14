@@ -129,7 +129,9 @@ def get_step_file(run_id: str, step: str, key: str) -> StreamingResponse:
     output_dict: dict[str, Any] = step_record.output
     uri = output_dict.get(key)
     if uri is None:
-        raise HTTPException(status_code=404, detail=f"Output key '{key}' not found in step '{step}'")
+        raise HTTPException(
+            status_code=404, detail=f"Output key '{key}' not found in step '{step}'"
+        )
     if not isinstance(uri, str):
         raise HTTPException(status_code=422, detail=f"Output key '{key}' is not a URI string")
 

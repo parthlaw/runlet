@@ -22,8 +22,8 @@ from runlet.metastore import (
 from runlet.orchestrator.config import PipelineConfig
 from runlet.orchestrator.context import PipelineContext, RuntimeContext
 from runlet.orchestrator.dag import DAG
-from runlet.orchestrator.models import RunnerConfig, RunResult
 from runlet.orchestrator.executor import ThreadedExecutor
+from runlet.orchestrator.models import RunnerConfig, RunResult
 from runlet.orchestrator.registry import ConfigStepRegistry, PrebuiltStepRegistry, StepRegistry
 from runlet.orchestrator.runner import SequentialRunner, build_runner
 from runlet.orchestrator.state import RunState, RunStatus, StepStatus
@@ -33,24 +33,23 @@ from runlet.steps.base import BaseStep
 __all__ = [
     "DAG",
     "ArtifactStore",
-    "ConfigStepRegistry",
-    "Pipeline",
-    "PrebuiltStepRegistry",
-    "StepRegistry",
     "ArtifactStoreDownloadError",
     "ArtifactStoreError",
     "ArtifactStoreUploadError",
     "BaseStep",
     "CockroachDBConfig",  # lazy-loaded via __getattr__
     "CockroachDBMetastore",  # lazy-loaded via __getattr__
+    "ConfigStepRegistry",
     "FilesystemStore",
     "LLMConfig",  # lazy-loaded via __getattr__
     "LLMProxy",  # lazy-loaded via __getattr__
     "NoopMetastore",
+    "Pipeline",
     "PipelineConfig",
     "PipelineContext",
     "PostgresConfig",  # lazy-loaded via __getattr__
     "PostgresMetastore",  # lazy-loaded via __getattr__
+    "PrebuiltStepRegistry",
     "RunMetastore",
     "RunResult",
     "RunState",
@@ -60,6 +59,7 @@ __all__ = [
     "S3ArtifactStore",  # lazy-loaded via __getattr__
     "S3Config",  # lazy-loaded via __getattr__
     "SequentialRunner",
+    "StepRegistry",
     "StepStatus",
     "ThreadedExecutor",
     "build_metastore",

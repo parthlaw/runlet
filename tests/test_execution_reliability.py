@@ -1,4 +1,4 @@
-"""Tests for execution reliability features: retry, timeout, validate_config, teardown, cancellation."""
+"""Tests for execution reliability features: retry, timeout, validate_config, teardown, cancellation."""  # noqa: E501
 from __future__ import annotations
 
 import threading
@@ -11,7 +11,6 @@ from runlet.orchestrator.context import PipelineContext
 from runlet.orchestrator.dag import DAG
 from runlet.orchestrator.models import RunnerConfig, RunResult
 from runlet.orchestrator.runner import SequentialRunner
-
 
 # ---------------------------------------------------------------------------
 # Test helpers

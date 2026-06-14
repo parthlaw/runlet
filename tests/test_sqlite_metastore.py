@@ -159,7 +159,9 @@ def test_in_memory_db():
 
 
 def test_build_metastore_returns_sqlite_instance(tmp_path):
-    ms = build_metastore(build_metastore_config({"type": "sqlite", "db_path": str(tmp_path / "smoke.db")}))
+    ms = build_metastore(
+        build_metastore_config({"type": "sqlite", "db_path": str(tmp_path / "smoke.db")})
+    )
     assert isinstance(ms, SqliteMetastore)
     ms.init_schema()
     ms.close()

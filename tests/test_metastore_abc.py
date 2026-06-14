@@ -76,7 +76,6 @@ def test_noop_record_run_success_accepts_outputs():
 
 def test_record_run_success_stores_outputs_in_sqlite(tmp_path):
     """record_run_success() must persist the outputs dict so get_run().outputs is populated."""
-    import pytest
     from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
 
     cfg = SqliteConfig(db_path=str(tmp_path / "meta.db"))

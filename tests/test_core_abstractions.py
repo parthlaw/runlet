@@ -10,10 +10,11 @@ from runlet.artifact_store import (
     build_store_config,
     register_store,
 )
+from runlet.orchestrator.config.models import StepConfig
 from runlet.orchestrator.context import PipelineContext, RuntimeContext
+from runlet.orchestrator.errors import ConfigValidationError
 from runlet.orchestrator.runner import _validate_run_id
 from runlet.orchestrator.writer_context import WriterContext, build_context
-
 
 # ---------------------------------------------------------------------------
 # Content-addressed blob store (FilesystemStore)
@@ -98,7 +99,8 @@ def test_runtime_context_and_writer_context_have_set_output():
         store=FilesystemStore.__new__(FilesystemStore),
         upload_store=FilesystemStore.__new__(FilesystemStore),
     )
-    # Both RuntimeContext (step-level key/value) and WriterContext (runner-level step dict) expose set_output
+    # Both RuntimeContext (step-level key/value) and WriterContext (runner-level step dict)
+    # expose set_output
     assert hasattr(ctx, "set_output")
     assert hasattr(RuntimeContext, "set_output")
 
@@ -138,7 +140,7 @@ def test_runtime_context_metadata_is_mapping(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_register_store_custom():
-    from runlet.artifact_store import STORE_REGISTRY, FilesystemConfig, StoreConfig, StoreType
+    from runlet.artifact_store import STORE_REGISTRY, FilesystemConfig
 
     class MockStore(FilesystemStore):
         pass
@@ -190,8 +192,6 @@ def test_run_id_empty_raises():
 # Step name path-safety validation (P1-C)
 # ---------------------------------------------------------------------------
 
-from runlet.orchestrator.config.models import StepConfig
-from runlet.orchestrator.errors import ConfigValidationError
 
 
 def _minimal_step(name: str) -> dict:

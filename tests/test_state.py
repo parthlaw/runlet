@@ -3,7 +3,7 @@ import datetime
 import threading
 
 from runlet.metastore.metastore import StepRecord
-from runlet.orchestrator.state import RunState, RunStatus, StepStatus
+from runlet.orchestrator.state import RunState, StepStatus
 
 
 def _step_record(step_name, status, attempt, output=None, error=None):

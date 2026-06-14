@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from runlet.artifact_store import build_store_config
 from runlet.orchestrator.config.models import PipelineConfig, StepConfig
