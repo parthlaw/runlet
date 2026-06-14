@@ -93,7 +93,7 @@ class S3ArtifactStore(ArtifactStore):
                 f"Failed to download JSON from {uri}: {exc}"
             ) from exc
 
-        return json.loads(raw)
+        return cast(dict[str, Any], json.loads(raw))
 
     def exists(self, uri: str) -> bool:
         key = self.uri_to_key(uri)

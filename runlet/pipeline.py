@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from runlet.artifact_store import build_store_config
 from runlet.orchestrator.config.models import PipelineConfig, StepConfig
@@ -66,14 +66,14 @@ class Pipeline:
         *,
         depends_on: list[str] | None = None,
         config: dict[str, Any] | None = None,
-    ) -> Callable:
+    ) -> Callable[..., Any]:
         """
         Decorate a function as a pipeline step.
 
         The function must accept a single ``context`` argument
         (RuntimeContext) and return a JSON-serializable dict.
         """
-        def decorator(fn: Callable) -> Callable:
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             if name in self._instances:
                 raise ValueError(
                     f"Duplicate step name '{name}'. "
@@ -141,11 +141,11 @@ class Pipeline:
         return runner.run(run_id)
 
 
-def _make_function_step(fn: Callable, name: str, config: dict[str, Any]) -> BaseStep:
+def _make_function_step(fn: Callable[..., Any], name: str, config: dict[str, Any]) -> BaseStep:
     """Wrap a plain function as a BaseStep subclass."""
     class _FunctionStep(BaseStep):
         def execute(self, context: Any) -> dict[str, Any]:
-            return fn(context)
+            return cast(dict[str, Any], fn(context))
 
     _FunctionStep.__name__ = name
     _FunctionStep.__qualname__ = name

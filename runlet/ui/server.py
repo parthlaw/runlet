@@ -71,9 +71,10 @@ def build_app(
         allow_headers=["*"],
     )
 
-    from runlet.ui.routes import artifacts, pipelines, runs
+    from runlet.ui.routes import artifacts, runs
+    from runlet.ui.routes import pipelines as pipelines_route
 
-    app.include_router(pipelines.router, prefix="/api")
+    app.include_router(pipelines_route.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")
     app.include_router(artifacts.router, prefix="/api")
 

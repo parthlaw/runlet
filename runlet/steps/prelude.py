@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from collections.abc import Mapping
 from typing import Any
 
 from runlet.orchestrator.runtime_context import RuntimeContext
@@ -17,7 +18,7 @@ class PreludeStep(BaseStep):
     """
 
     @abstractmethod
-    def execute_prelude(self, metadata: dict[str, Any]) -> dict[str, Any]:
+    def execute_prelude(self, metadata: Mapping[str, Any]) -> dict[str, Any]:
         """Run pre-topology logic against pipeline metadata. Return a JSON-serializable dict."""
         ...
 

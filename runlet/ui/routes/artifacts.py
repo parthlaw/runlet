@@ -22,6 +22,8 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from runlet.artifact_store import ArtifactStore
+from runlet.metastore.metastore import StepRecord
 from runlet.ui.server import registry
 
 router = APIRouter()
@@ -32,7 +34,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 
-def _find_step_record(run_id: str, step: str):
+def _find_step_record(run_id: str, step: str) -> tuple[ArtifactStore, StepRecord]:
     """Return (store, step_record) or raise HTTPException."""
     for entry in registry.values():
         run = entry.metastore.get_run(run_id)
@@ -53,7 +55,7 @@ def _stream_jsonl(records: list[dict[str, Any]]) -> Generator[str, None, None]:
         yield json.dumps(record) + "\n"
 
 
-def _stream_raw_file(uri: str, store) -> Generator[bytes, None, None]:
+def _stream_raw_file(uri: str, store: ArtifactStore) -> Generator[bytes, None, None]:
     """Yield raw file bytes in 64 KB chunks, supporting file:// and store-backed URIs."""
     parsed = urlparse(uri)
     if parsed.scheme == "file":

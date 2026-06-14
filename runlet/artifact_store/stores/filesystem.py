@@ -11,7 +11,7 @@ import os
 import shutil
 import tempfile
 from dataclasses import dataclass
-from typing import IO, Any, ClassVar
+from typing import IO, Any, ClassVar, cast
 from urllib.parse import urlparse
 
 from runlet.artifact_store.store import (
@@ -100,7 +100,7 @@ class FilesystemStore(ArtifactStore):
         path = self.uri_to_path(uri)
         try:
             with open(path, encoding="utf-8") as fh:
-                return json.loads(fh.read())
+                return cast(dict[str, Any], json.loads(fh.read()))
         except OSError as exc:
             raise ArtifactStoreDownloadError(
                 f"Failed to read JSON from {uri}: {exc}"

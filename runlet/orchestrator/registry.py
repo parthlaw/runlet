@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from runlet.orchestrator.errors import ConfigValidationError
 from runlet.steps.base import BaseStep
@@ -51,7 +51,7 @@ class ConfigStepRegistry(StepRegistry):
             step_cfg = self._step_cfgs[name]
         except KeyError:
             raise StepImportError(f"No StepConfig found for step '{name}'.") from None
-        return load_step(step_cfg)
+        return cast(BaseStep, load_step(step_cfg))
 
     # validate() is intentionally a no-op: import errors surface lazily at
     # execution time, matching current behavior.
