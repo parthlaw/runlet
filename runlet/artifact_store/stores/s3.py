@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import IO, Any, ClassVar, cast
 
@@ -52,7 +53,9 @@ class S3ArtifactStore(ArtifactStore):
         self._client = self._build_boto_client()
 
     def build_key(self, run_id: str, step_name: str, filename: str) -> str:
-        return f"{self._config.prefix}{run_id}/{step_name}/{filename}.json"
+        _, ext = os.path.splitext(filename)
+        suffix = "" if ext else ".json"
+        return f"{self._config.prefix}{run_id}/{step_name}/{filename}{suffix}"
 
     def to_uri(self, key: str) -> str:
         return f"s3://{self._config.bucket}/{key}"

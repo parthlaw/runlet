@@ -42,6 +42,17 @@ def test_path_traversal_raises(store, tmp_path):
         store.upload_file_raw(str(src), "../../../etc/passwd")
 
 
+def test_build_key_bare_name_appends_json(store):
+    key = store.build_key("r1", "parse", "words")
+    assert key == "r1/parse/words.json"
+
+
+def test_build_key_with_extension_preserves_it(store):
+    assert store.build_key("r1", "parse", "words.jsonl") == "r1/parse/words.jsonl"
+    assert store.build_key("r1", "parse", "data.csv") == "r1/parse/data.csv"
+    assert store.build_key("r1", "parse", "result.json") == "r1/parse/result.json"
+
+
 def test_concurrent_upload_json_last_write_wins(store):
     key = "run1/state/run_state.json"
     errors = []

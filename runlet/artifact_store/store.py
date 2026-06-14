@@ -32,7 +32,10 @@ class ArtifactStore(ABC):
         """
         Construct a canonical object key.
 
-        Pattern: {prefix}{run_id}/{step_name}/{filename}.json
+        Pattern: {prefix}{run_id}/{step_name}/{filename}
+        If *filename* has no extension, ``.json`` is appended automatically.
+        Pass a filename with an explicit extension (e.g. ``"data.jsonl"``) to
+        preserve it as-is.
         """
 
     @abstractmethod

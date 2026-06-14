@@ -60,7 +60,9 @@ class FilesystemStore(ArtifactStore):
         return cls(base_dir=cfg.base_dir, prefix=cfg.prefix)
 
     def build_key(self, run_id: str, step_name: str, filename: str) -> str:
-        return f"{self._prefix}{run_id}/{step_name}/{filename}.json"
+        _, ext = os.path.splitext(filename)
+        suffix = "" if ext else ".json"
+        return f"{self._prefix}{run_id}/{step_name}/{filename}{suffix}"
 
     def to_uri(self, key: str) -> str:
         path = self._path_for_key(key)
