@@ -1,9 +1,8 @@
 """
 RunMetastore — abstract interface for pipeline lifecycle metadata.
 
-The metastore tracks run and step status for querying purposes.
-It is additive: the JSON run-state file continues to drive resume logic;
-the metastore is for history and cross-run queries.
+The metastore is the sole source of truth for step and run lifecycle state.
+It drives resume logic (via ``list_steps``) and serves cross-run history queries.
 """
 
 from __future__ import annotations

@@ -165,7 +165,8 @@ class SqliteMetastore(RunMetastore):
             VALUES (?, ?, 'running', ?, ?)
             ON CONFLICT (run_id) DO UPDATE
               SET status = 'running',
-                  updated_at = excluded.updated_at
+                  updated_at = excluded.updated_at,
+                  outputs = '{}'
             """,
             (run_id, pipeline_name, now, now),
         )
@@ -234,7 +235,8 @@ class SqliteMetastore(RunMetastore):
             ON CONFLICT (run_id, step_name, attempt) DO UPDATE
               SET status = 'success',
                   duration_seconds = excluded.duration_seconds,
-                  output = excluded.output
+                  output = excluded.output,
+                  error = NULL
             """,
             (
                 run_id,

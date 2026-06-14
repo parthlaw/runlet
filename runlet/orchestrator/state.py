@@ -1,49 +1,30 @@
 """
-RunState — durable execution state for a pipeline run.
+RunState — in-memory execution state for a pipeline run.
 
 Design
 ------
-The state file lives in the artifact store alongside all other artifacts so
-the entire run is self-contained and auditable from one place.
-
-Key pattern:
-    {store_prefix}{run_id}/_state/run_state.json
-
-The file contains a single JSON object capturing current run state:
-
-  {
-    "run_id": "...",
-    "pipeline_name": "...",
-    "run_status": "running" | "success" | "failed" | "cancelled",
-    "steps": {
-      "<step_name>": {
-        "status": "pending" | "running" | "success" | "failed" | "skipped",
-        "output": {...}   // only present on success
-      }
-    }
-  }
-
-On resume, the runner loads the state file and skips all steps already in
-``StepStatus.SUCCESS`` state. Intermediate retry records are NOT stored in
-the state file — the metastore retains full per-attempt history.
+RunState is a pure in-memory structure. It is populated on resume by calling
+``restore_from_records`` with the step rows returned by the metastore. All
+state transitions are driven by the runner and mirrored to the metastore via
+``_safe_metastore`` calls; no object store writes happen here.
 
 Thread safety
 -------------
-All ``mark_*`` methods hold ``_flush_lock`` across both the in-memory dict
-mutation and the file write so concurrent step completions cannot interleave.
+All ``mark_*`` methods hold ``_flush_lock`` across the in-memory dict mutation
+so concurrent step completions via ThreadedExecutor cannot produce a torn read.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
+from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from runlet.artifact_store import ArtifactStore
-from runlet.orchestrator.errors import StateNotFoundError
+if TYPE_CHECKING:
+    from runlet.metastore.metastore import StepRecord
 
 logger = logging.getLogger(__name__)
 
@@ -67,17 +48,10 @@ class RunStatus(str, Enum):
 
 @dataclass
 class RunState:
-    """
-    Mutable execution state for a single pipeline run.
-
-    All state transitions are immediately flushed to the artifact store so the
-    run can be resumed after any failure.
-    """
+    """Mutable in-memory execution state for a single pipeline run."""
 
     run_id: str
     pipeline_name: str
-    store: ArtifactStore
-    store_prefix: str
 
     run_status: RunStatus = field(default=RunStatus.RUNNING, init=False)
     _step_statuses: dict[str, StepStatus] = field(
@@ -90,42 +64,29 @@ class RunState:
         default_factory=threading.Lock, init=False, repr=False
     )
 
-    @property
-    def store_key(self) -> str:
-        return f"{self.store_prefix}{self.run_id}/_state/run_state.json"
-
-    @property
-    def store_uri(self) -> str:
-        return self.store.to_uri(self.store_key)
-
     def mark_run_started(self) -> None:
         with self._flush_lock:
             self.run_status = RunStatus.RUNNING
-            self._flush()
         logger.info("Run '%s' started.", self.run_id)
 
     def mark_run_success(self) -> None:
         with self._flush_lock:
             self.run_status = RunStatus.SUCCESS
-            self._flush()
         logger.info("Run '%s' completed successfully.", self.run_id)
 
     def mark_run_failed(self, error: str) -> None:
         with self._flush_lock:
             self.run_status = RunStatus.FAILED
-            self._flush()
         logger.error("Run '%s' failed: %s", self.run_id, error)
 
     def mark_run_cancelled(self) -> None:
         with self._flush_lock:
             self.run_status = RunStatus.CANCELLED
-            self._flush()
         logger.info("Run '%s' cancelled.", self.run_id)
 
     def mark_step_running(self, step_name: str, attempt: int = 1) -> None:
         with self._flush_lock:
             self._step_statuses[step_name] = StepStatus.RUNNING
-            self._flush()
         logger.info("[%s] → RUNNING (attempt %d)", step_name, attempt)
 
     def mark_step_success(
@@ -135,6 +96,7 @@ class RunState:
         duration_seconds: float,
         attempt: int = 1,
     ) -> None:
+        import json
         serialized = json.dumps(output)
         if len(serialized) > _OUTPUT_SIZE_WARN_BYTES:
             logger.warning(
@@ -145,7 +107,6 @@ class RunState:
         with self._flush_lock:
             self._step_statuses[step_name] = StepStatus.SUCCESS
             self._step_outputs[step_name] = output
-            self._flush()
         logger.info("[%s] → SUCCESS (%.2fs, attempt %d)", step_name, duration_seconds, attempt)
 
     def mark_step_failed(
@@ -157,7 +118,6 @@ class RunState:
     ) -> None:
         with self._flush_lock:
             self._step_statuses[step_name] = StepStatus.FAILED
-            self._flush()
         logger.error(
             "[%s] → FAILED (%.2fs, attempt %d): %s", step_name, duration_seconds, attempt, error
         )
@@ -165,104 +125,72 @@ class RunState:
     def mark_step_skipped(self, step_name: str) -> None:
         with self._flush_lock:
             self._step_statuses[step_name] = StepStatus.SKIPPED
-            self._flush()
         logger.info("[%s] → SKIPPED", step_name)
 
     def step_status(self, step_name: str) -> StepStatus:
-        return self._step_statuses.get(step_name, StepStatus.PENDING)
+        with self._flush_lock:
+            return self._step_statuses.get(step_name, StepStatus.PENDING)
 
     def is_step_complete(self, step_name: str) -> bool:
-        status = self._step_statuses.get(step_name)
+        with self._flush_lock:
+            status = self._step_statuses.get(step_name)
         return status in (StepStatus.SUCCESS, StepStatus.SKIPPED)
 
     def step_output(self, step_name: str) -> dict[str, Any]:
-        return dict(self._step_outputs.get(step_name, {}))
+        with self._flush_lock:
+            return dict(self._step_outputs.get(step_name, {}))
 
     def all_step_outputs(self) -> dict[str, dict[str, Any]]:
-        return {name: dict(out) for name, out in self._step_outputs.items()}
+        with self._flush_lock:
+            return {name: dict(out) for name, out in self._step_outputs.items()}
 
     def summary(self) -> dict[str, Any]:
-        return {
-            "run_id": self.run_id,
-            "pipeline_name": self.pipeline_name,
-            "run_status": self.run_status.value,
-            "steps": {
-                name: status.value
-                for name, status in self._step_statuses.items()
-            },
-        }
-
-    def _to_dict(self) -> dict[str, Any]:
-        """Serialize current in-memory state to a JSON-compatible dict."""
-        steps: dict[str, Any] = {}
-        for name, status in self._step_statuses.items():
-            entry: dict[str, Any] = {"status": status.value}
-            if name in self._step_outputs:
-                entry["output"] = self._step_outputs[name]
-            steps[name] = entry
-        return {
-            "run_id": self.run_id,
-            "pipeline_name": self.pipeline_name,
-            "run_status": self.run_status.value,
-            "steps": steps,
-        }
-
-    def _flush(self) -> None:
-        """Write current state atomically. Must be called with _flush_lock held."""
-        self.store.upload_json(self._to_dict(), key=self.store_key)
-        logger.debug("State flushed to %s", self.store_uri)
+        with self._flush_lock:
+            return {
+                "run_id": self.run_id,
+                "pipeline_name": self.pipeline_name,
+                "run_status": self.run_status.value,
+                "steps": {
+                    name: status.value
+                    for name, status in self._step_statuses.items()
+                },
+            }
 
     @classmethod
-    def create_new(
+    def restore_from_records(
         cls,
         run_id: str,
         pipeline_name: str,
-        store: ArtifactStore,
-        store_prefix: str,
+        records: list[StepRecord],
     ) -> RunState:
-        state = cls(
-            run_id=run_id,
-            pipeline_name=pipeline_name,
-            store=store,
-            store_prefix=store_prefix,
-        )
-        state.mark_run_started()
-        return state
+        """Reconstruct in-memory state from metastore step records.
 
-    @classmethod
-    def load_existing(
-        cls,
-        run_id: str,
-        pipeline_name: str,
-        store: ArtifactStore,
-        store_prefix: str,
-    ) -> RunState:
-        state = cls(
-            run_id=run_id,
-            pipeline_name=pipeline_name,
-            store=store,
-            store_prefix=store_prefix,
-        )
+        Groups records by step_name. A step is considered complete if any
+        attempt has status='success' (uses that attempt's output) or
+        status='skipped'. FAILED/RUNNING records mean the step will re-execute.
+        Handles retry history correctly: attempt=1 FAILED + attempt=2 SUCCESS
+        → step is complete with attempt=2's output.
+        """
+        state = cls(run_id=run_id, pipeline_name=pipeline_name)
 
-        if not state.store.exists(state.store_uri):
-            raise StateNotFoundError(
-                f"No state file found for run '{run_id}' at {state.store_uri}. "
-                "Cannot resume a run that has not been started."
-            )
+        by_step: dict[str, list[StepRecord]] = defaultdict(list)
+        for rec in records:
+            by_step[rec.step_name].append(rec)
 
-        data = store.download_json(uri=state.store_uri)
-        state._restore(data)
+        completed = 0
+        for step_name, attempts in by_step.items():
+            success = next((r for r in attempts if r.status == "success"), None)
+            if success is not None:
+                state._step_statuses[step_name] = StepStatus.SUCCESS
+                state._step_outputs[step_name] = success.output
+                completed += 1
+                continue
+            skipped = next((r for r in attempts if r.status == "skipped"), None)
+            if skipped is not None:
+                state._step_statuses[step_name] = StepStatus.SKIPPED
+                completed += 1
+
         logger.info(
-            "Resumed run '%s'. Completed steps: %s",
-            run_id,
-            [n for n, s in state._step_statuses.items() if s == StepStatus.SUCCESS],
+            "Restored state for run '%s': %d step(s) already complete.", run_id, completed
         )
         return state
-
-    def _restore(self, data: dict[str, Any]) -> None:
-        """Rebuild in-memory state from a persisted JSON snapshot."""
-        self.run_status = RunStatus(data["run_status"])
-        for name, step in data.get("steps", {}).items():
-            self._step_statuses[name] = StepStatus(step["status"])
-            if "output" in step:
-                self._step_outputs[name] = step["output"]

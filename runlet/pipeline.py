@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any, Callable
 
 from runlet.artifact_store import build_store_config
 from runlet.orchestrator.config.models import PipelineConfig, StepConfig
 from runlet.orchestrator.dag import DAG
+from runlet.orchestrator.errors import ConfigValidationError
 from runlet.orchestrator.models import RunnerConfig, RunResult
 from runlet.orchestrator.registry import PrebuiltStepRegistry
 from runlet.orchestrator.runner import SequentialRunner
@@ -71,6 +73,11 @@ class Pipeline:
         (RuntimeContext) and return a JSON-serializable dict.
         """
         def decorator(fn: Callable) -> Callable:
+            if name in self._instances:
+                raise ValueError(
+                    f"Duplicate step name '{name}'. "
+                    "Each step in a pipeline must have a unique name."
+                )
             instance = _make_function_step(fn, name=name, config=config or {})
             self._instances[name] = instance
             self._step_cfgs.append(
@@ -87,10 +94,16 @@ class Pipeline:
 
     def _build_config(self) -> PipelineConfig:
         """Construct the PipelineConfig from the current set of decorated steps."""
+        steps = tuple(self._step_cfgs)
+        if not steps:
+            raise ConfigValidationError(
+                "Pipeline must define at least one step. "
+                "Use @pipe.step() to register steps before calling run()."
+            )
         return PipelineConfig(
             name=self._name,
             run_id_prefix=self._run_id_prefix,
-            steps=tuple(self._step_cfgs),
+            steps=steps,
             store=build_store_config(self._store_raw),
             runner=RunnerConfig.from_dict(self._runner_raw),
         )
@@ -99,15 +112,27 @@ class Pipeline:
         self,
         run_id: str,
         *,
+        resume: bool = False,
         initial_metadata: dict[str, Any] | None = None,
         metastore: Any | None = None,
     ) -> RunResult:
-        """Build the DAG, create a PrebuiltStepRegistry, and execute the run."""
+        """Build the DAG, create a PrebuiltStepRegistry, and execute the run.
+
+        ``resume=True`` skips steps already recorded as complete in the metastore.
+        A persistent metastore must be supplied (or configured via the ``runner``
+        dict) for resume to work — with NoopMetastore the run always starts fresh.
+        """
         pipeline_cfg = self._build_config()
+        runner_cfg = (
+            dataclasses.replace(pipeline_cfg.runner, resume=True)
+            if resume
+            else pipeline_cfg.runner
+        )
         registry = PrebuiltStepRegistry(self._instances)
         dag = DAG(pipeline_cfg)
         runner = SequentialRunner(
             dag=dag,
+            runner_config=runner_cfg,
             step_registry=registry,
             initial_metadata=initial_metadata,
             metastore=metastore,

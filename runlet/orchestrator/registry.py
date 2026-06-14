@@ -70,12 +70,15 @@ class PrebuiltStepRegistry(StepRegistry):
 
     def get(self, name: str) -> BaseStep:
         try:
-            return self._instances[name]
+            template = self._instances[name]
         except KeyError:
             raise StepImportError(
                 f"No step registered for name '{name}'. "
                 "Ensure every pipeline step is decorated with @pipe.step()."
             ) from None
+        # Fresh instance per call to match ConfigStepRegistry semantics —
+        # execute() may mutate self and retries must start clean.
+        return type(template)(name=template.name, config=dict(template.config))
 
     def validate(self, step_names: list[str]) -> None:
         missing = [n for n in step_names if n not in self._instances]

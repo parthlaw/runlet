@@ -1,5 +1,7 @@
 """Tests for the RunMetastore ABC contract using NoopMetastore. No optional deps required."""
 
+import pytest
+
 from runlet.metastore import (
     NoopMetastore,
     RunMetastore,

@@ -14,7 +14,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from runlet.artifact_store import ArtifactStore, build_runtime_stores
+from runlet.artifact_store import build_runtime_stores
 from runlet.orchestrator.condition_evaluator import evaluate_condition
 from runlet.orchestrator.config.models import PipelineConfig, StepConfig
 from runlet.orchestrator.dag import DAG
@@ -82,7 +82,7 @@ class SequentialRunner:
         _validate_run_id(run_id)
 
         pipeline_cfg = self._dag.config
-        store, upload_store, store_prefix = build_runtime_stores(
+        store, upload_store, _ = build_runtime_stores(
             pipeline_cfg.store,
             self._initial_metadata,
         )
@@ -100,8 +100,6 @@ class SequentialRunner:
         state = self._initialise_state(
             run_id=run_id,
             pipeline_cfg=pipeline_cfg,
-            store=store,
-            store_prefix=store_prefix,
             context=context,
         )
         _safe_metastore(self._metastore.record_run_started, run_id, pipeline_cfg.name)
@@ -281,8 +279,8 @@ class SequentialRunner:
                 steps_skipped=steps_skipped,
                 failed_step=failure_info.get("step"),
                 error=error,
-                state_uri=state.store_uri,
                 metadata=copy.deepcopy(dict(context.metadata)),
+                outputs=context.list_outputs(),
             )
 
         if self._cancel_event.is_set():
@@ -297,8 +295,8 @@ class SequentialRunner:
                 steps_skipped=steps_skipped,
                 failed_step=None,
                 error=None,
-                state_uri=state.store_uri,
                 metadata=copy.deepcopy(dict(context.metadata)),
+                outputs=context.list_outputs(),
             )
 
         state.mark_run_success()
@@ -318,43 +316,41 @@ class SequentialRunner:
             steps_skipped=steps_skipped,
             failed_step=None,
             error=None,
-            state_uri=state.store_uri,
             metadata=copy.deepcopy(dict(context.metadata)),
+            outputs=context.list_outputs(),
         )
 
     def _initialise_state(
         self,
         run_id: str,
         pipeline_cfg: PipelineConfig,
-        store: ArtifactStore,
-        store_prefix: str,
         context: WriterContext,
     ) -> RunState:
         if self._config.resume:
             try:
-                state = RunState.load_existing(
-                    run_id=run_id,
-                    pipeline_name=pipeline_cfg.name,
-                    store=store,
-                    store_prefix=store_prefix,
+                records = self._metastore.list_steps(run_id)
+                if records:
+                    state = RunState.restore_from_records(
+                        run_id=run_id,
+                        pipeline_name=pipeline_cfg.name,
+                        records=records,
+                    )
+                    context.restore_outputs(state.all_step_outputs())
+                    return state
+                logger.warning(
+                    "resume=True for run '%s' but no prior records found in metastore. "
+                    "Starting fresh. Configure a persistent metastore to enable resume.",
+                    run_id,
                 )
-                context.restore_outputs(state.all_step_outputs())
-                logger.info("Resuming run '%s'.", run_id)
-                return state
             except Exception as exc:
                 logger.warning(
-                    "Could not load existing state for run '%s' (reason: %s). "
+                    "Could not load state for run '%s' from metastore (reason: %s). "
                     "Starting fresh.",
                     run_id,
                     exc,
                 )
 
-        return RunState.create_new(
-            run_id=run_id,
-            pipeline_name=pipeline_cfg.name,
-            store=store,
-            store_prefix=store_prefix,
-        )
+        return RunState(run_id=run_id, pipeline_name=pipeline_cfg.name)
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +404,7 @@ def _execute_with_timeout(
     future = pool.submit(_run)
     try:
         result = future.result(timeout=float(timeout_s))
-        pool.shutdown(wait=False)
+        pool.shutdown(wait=True)
         return result
     except concurrent.futures.TimeoutError:
         pool.shutdown(wait=False)

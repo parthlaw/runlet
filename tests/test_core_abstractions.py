@@ -91,16 +91,16 @@ def test_pipeline_context_is_alias_for_writer_context():
     assert PipelineContext is WriterContext
 
 
-def test_runtime_context_has_no_set_output():
+def test_runtime_context_and_writer_context_have_set_output():
     ctx = build_context(
         run_id="r",
         pipeline_name="p",
         store=FilesystemStore.__new__(FilesystemStore),
         upload_store=FilesystemStore.__new__(FilesystemStore),
     )
-    # WriterContext has set_output; RuntimeContext does not
+    # Both RuntimeContext (step-level key/value) and WriterContext (runner-level step dict) expose set_output
     assert hasattr(ctx, "set_output")
-    assert not hasattr(RuntimeContext, "set_output")
+    assert hasattr(RuntimeContext, "set_output")
 
 
 def test_writer_context_metadata_is_read_only(tmp_path):

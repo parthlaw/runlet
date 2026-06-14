@@ -77,7 +77,7 @@ def test_two_step_pipeline_success(store_dir, monkeypatch):
     assert result.failed_step is None
 
 
-def test_resume_skips_completed_steps(store_dir, monkeypatch):
+def test_resume_skips_completed_steps(store_dir, tmp_path, monkeypatch):
     import importlib
     original_import_module = importlib.import_module
 
@@ -92,6 +92,12 @@ def test_resume_skips_completed_steps(store_dir, monkeypatch):
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
 
+    from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
+
+    # Use a file-backed SQLite DB so the data persists after the first runner closes
+    # its connection.
+    db_path = str(tmp_path / "meta.db")
+
     raw = _build_pipeline_config(store_dir, [
         {"name": "producer", "module": "test_steps", "class": "ProducerStep", "depends_on": []},
         {
@@ -102,13 +108,13 @@ def test_resume_skips_completed_steps(store_dir, monkeypatch):
     cfg = PipelineConfig.from_dict(raw)
     dag = DAG(cfg)
 
-    # First run
-    runner = SequentialRunner(dag, RunnerConfig())
+    # First run — populates metastore; runner closes the connection when done.
+    runner = SequentialRunner(dag, RunnerConfig(), metastore=SqliteMetastore(SqliteConfig(db_path=db_path)))
     result1 = runner.run("run002")
     assert result1.success
 
-    # Resume run
-    runner2 = SequentialRunner(dag, RunnerConfig(resume=True))
+    # Resume run — opens a fresh connection to the same file and reads prior step records.
+    runner2 = SequentialRunner(dag, RunnerConfig(resume=True), metastore=SqliteMetastore(SqliteConfig(db_path=db_path)))
     result2 = runner2.run("run002")
     assert result2.steps_skipped == ["producer", "consumer"]
     assert result2.steps_executed == []
@@ -184,3 +190,49 @@ def test_failing_step_returns_failed_result(store_dir, monkeypatch):
     assert not result.success
     assert result.failed_step == "failing"
     assert "producer" in result.steps_executed
+
+
+def test_pipeline_decorator_resume(store_dir, tmp_path):
+    """Pipeline.run(resume=True) skips steps already recorded in the metastore."""
+    from runlet import Pipeline
+    from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
+
+    db_path = str(tmp_path / "meta.db")
+
+    pipe = Pipeline(
+        "decorator-resume-test",
+        store={"type": "filesystem", "base_dir": store_dir},
+    )
+
+    executions: list[str] = []
+
+    @pipe.step("step_a")
+    def step_a(context):
+        executions.append("step_a")
+        return {"value": 1}
+
+    @pipe.step("step_b", depends_on=["step_a"])
+    def step_b(context):
+        executions.append("step_b")
+        return {"value": 2}
+
+    # First run — both steps execute and are recorded in the metastore.
+    result1 = pipe.run(
+        "dec-run001",
+        metastore=SqliteMetastore(SqliteConfig(db_path=db_path)),
+    )
+    assert result1.success
+    assert executions == ["step_a", "step_b"]
+
+    executions.clear()
+
+    # Resume run — both steps are already in the metastore as SUCCESS, so skipped.
+    result2 = pipe.run(
+        "dec-run001",
+        resume=True,
+        metastore=SqliteMetastore(SqliteConfig(db_path=db_path)),
+    )
+    assert result2.success
+    assert result2.steps_skipped == ["step_a", "step_b"]
+    assert result2.steps_executed == []
+    assert executions == []

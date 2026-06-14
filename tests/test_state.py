@@ -1,19 +1,26 @@
-"""Tests for RunState transitions and persistence."""
+"""Tests for RunState transitions and restore logic."""
+import datetime
 import threading
 
-import pytest
-
-from runlet.artifact_store import FilesystemStore
+from runlet.metastore.metastore import StepRecord
 from runlet.orchestrator.state import RunState, RunStatus, StepStatus
 
 
-@pytest.fixture
-def store(tmp_path):
-    return FilesystemStore(str(tmp_path))
+def _step_record(step_name, status, attempt, output=None, error=None):
+    return StepRecord(
+        run_id="run1",
+        step_name=step_name,
+        status=status,
+        attempt=attempt,
+        duration_seconds=0.1,
+        error=error,
+        output=output or {},
+        recorded_at=datetime.datetime.now(tz=datetime.UTC),
+    )
 
 
-def test_step_status_transitions(store):
-    state = RunState.create_new("run1", "test-pipeline", store, "")
+def test_step_status_transitions():
+    state = RunState(run_id="run1", pipeline_name="test-pipeline")
     assert state.step_status("step_a") == StepStatus.PENDING
     assert not state.is_step_complete("step_a")
 
@@ -25,36 +32,79 @@ def test_step_status_transitions(store):
     assert state.is_step_complete("step_a")
 
 
-def test_step_failed(store):
-    state = RunState.create_new("run1", "p", store, "")
+def test_step_failed():
+    state = RunState(run_id="run1", pipeline_name="p")
     state.mark_step_running("step_a")
     state.mark_step_failed("step_a", error="boom", duration_seconds=0.1)
     assert state.step_status("step_a") == StepStatus.FAILED
     assert not state.is_step_complete("step_a")
 
 
-def test_step_skipped(store):
-    state = RunState.create_new("run1", "p", store, "")
+def test_step_skipped():
+    state = RunState(run_id="run1", pipeline_name="p")
     state.mark_step_skipped("step_a")
     assert state.is_step_complete("step_a")
 
 
-def test_round_trip_load_existing(store):
-    state = RunState.create_new("run42", "pipe", store, "")
-    state.mark_step_running("extract")
-    state.mark_step_success("extract", output={"uri": "x/y", "count": 10}, duration_seconds=2.5)
-    state.mark_run_success()
-
-    reloaded = RunState.load_existing("run42", "pipe", store, "")
-    assert reloaded.step_status("extract") == StepStatus.SUCCESS
-    assert reloaded.is_step_complete("extract")
-    assert reloaded.step_output("extract") == {"uri": "x/y", "count": 10}
-    assert reloaded.run_status == RunStatus.SUCCESS
+def test_restore_from_records_simple_success():
+    records = [
+        _step_record("extract", "success", 1, output={"uri": "x/y", "count": 10}),
+    ]
+    state = RunState.restore_from_records("run42", "pipe", records)
+    assert state.step_status("extract") == StepStatus.SUCCESS
+    assert state.is_step_complete("extract")
+    assert state.step_output("extract") == {"uri": "x/y", "count": 10}
 
 
-def test_concurrent_mark_step_success_all_persisted(store):
-    """10 threads completing unique steps simultaneously must all appear in reloaded state."""
-    state = RunState.create_new("run-concurrent", "pipe", store, "")
+def test_restore_from_records_skipped():
+    records = [
+        _step_record("optional_step", "skipped", 0),
+    ]
+    state = RunState.restore_from_records("run42", "pipe", records)
+    assert state.step_status("optional_step") == StepStatus.SKIPPED
+    assert state.is_step_complete("optional_step")
+    assert state.step_output("optional_step") == {}
+
+
+def test_restore_from_records_retry_then_success():
+    """attempt=1 FAILED, attempt=2 SUCCESS → step complete with attempt=2 output."""
+    records = [
+        _step_record("etl", "failed", 1, error="timeout"),
+        _step_record("etl", "success", 2, output={"rows": 500}),
+    ]
+    state = RunState.restore_from_records("run42", "pipe", records)
+    assert state.step_status("etl") == StepStatus.SUCCESS
+    assert state.step_output("etl") == {"rows": 500}
+
+
+def test_restore_from_records_failed_not_complete():
+    """A step that only has FAILED records is left PENDING so it re-runs on resume."""
+    records = [
+        _step_record("etl", "failed", 1, error="crash"),
+    ]
+    state = RunState.restore_from_records("run42", "pipe", records)
+    # FAILED steps are intentionally not restored — they re-execute on resume.
+    assert state.step_status("etl") == StepStatus.PENDING
+    assert not state.is_step_complete("etl")
+
+
+def test_restore_from_records_mixed_steps():
+    """Mix of complete and incomplete steps."""
+    records = [
+        _step_record("ingest", "success", 1, output={"count": 7}),
+        _step_record("transform", "failed", 1, error="oom"),
+        _step_record("export", "skipped", 0),
+    ]
+    state = RunState.restore_from_records("run99", "pipe", records)
+    assert state.is_step_complete("ingest")
+    assert state.step_output("ingest") == {"count": 7}
+    assert not state.is_step_complete("transform")
+    assert state.is_step_complete("export")
+
+
+def test_concurrent_mark_step_success_thread_safety():
+    """10 threads completing unique steps simultaneously — no races or errors."""
+    state = RunState(run_id="run-concurrent", pipeline_name="pipe")
     step_names = [f"step_{i}" for i in range(10)]
     errors: list[Exception] = []
 
@@ -71,8 +121,6 @@ def test_concurrent_mark_step_success_all_persisted(store):
         t.join()
 
     assert not errors
-
-    reloaded = RunState.load_existing("run-concurrent", "pipe", store, "")
     for name in step_names:
-        assert reloaded.step_status(name) == StepStatus.SUCCESS, f"{name} missing from reloaded state"
-        assert reloaded.step_output(name) == {"done": True}
+        assert state.step_status(name) == StepStatus.SUCCESS
+        assert state.step_output(name) == {"done": True}

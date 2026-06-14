@@ -152,7 +152,8 @@ class PostgresMetastore(RunMetastore):
             VALUES (%s, %s, 'running', now(), now())
             ON CONFLICT (run_id) DO UPDATE
               SET status = 'running',
-                  updated_at = now()
+                  updated_at = now(),
+                  outputs = '{}'
             """,
             (run_id, pipeline_name),
         )
@@ -225,7 +226,8 @@ class PostgresMetastore(RunMetastore):
             ON CONFLICT (run_id, step_name, attempt) DO UPDATE
               SET status = 'success',
                   duration_seconds = EXCLUDED.duration_seconds,
-                  output = EXCLUDED.output
+                  output = EXCLUDED.output,
+                  error = NULL
             """,
             (run_id, step_name, attempt, duration_seconds, Jsonb(output)),
         )

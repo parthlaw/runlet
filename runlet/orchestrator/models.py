@@ -38,7 +38,6 @@ class RunResult:
     steps_skipped: list[str]
     failed_step: str | None
     error: str | None
-    state_uri: str
     metadata: dict[str, Any] = dataclass_field(default_factory=dict)
     status: str = ""  # "SUCCESS", "FAILED", "CANCELLED"
     outputs: dict[str, Any] = dataclass_field(default_factory=dict)
