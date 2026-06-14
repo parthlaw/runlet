@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from typing import Any
 
+from runlet.metastore import MetastoreConfig, build_metastore_config
+
 
 @dataclass(frozen=True)
 class RunnerConfig:
@@ -14,7 +16,7 @@ class RunnerConfig:
     resume: bool = False
     log_level: str = "INFO"
     max_concurrent_steps: int = 1
-    metastore_raw: dict[str, Any] | None = None
+    metastore: MetastoreConfig | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RunnerConfig:
@@ -22,7 +24,7 @@ class RunnerConfig:
             resume=data.get("resume", False),
             log_level=data.get("log_level", "INFO"),
             max_concurrent_steps=int(data.get("max_concurrent_steps", 1)),
-            metastore_raw=data.get("metastore") or None,
+            metastore=build_metastore_config(data.get("metastore") or None),
         )
 
 
@@ -36,7 +38,6 @@ class RunResult:
     steps_skipped: list[str]
     failed_step: str | None
     error: str | None
-    state_uri: str
     metadata: dict[str, Any] = dataclass_field(default_factory=dict)
     status: str = ""  # "SUCCESS", "FAILED", "CANCELLED"
     outputs: dict[str, Any] = dataclass_field(default_factory=dict)

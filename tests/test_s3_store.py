@@ -21,11 +21,11 @@ def s3_store():
         yield S3ArtifactStore(config)
 
 
-def test_upload_download_jsonl_roundtrip(s3_store):
-    records = [{"x": 1}, {"y": 2}]
-    uri = s3_store.upload_jsonl(records, "run1/step/out.jsonl")
-    result = s3_store.download_jsonl(uri)
-    assert result == records
+def test_upload_download_json_roundtrip(s3_store):
+    data = {"run_id": "r1", "run_status": "success", "steps": {"a": {"status": "success"}}}
+    uri = s3_store.upload_json(data, "run1/state/run_state.json")
+    result = s3_store.download_json(uri)
+    assert result == data
 
 
 def test_upload_download_file_roundtrip(s3_store, tmp_path):
@@ -39,7 +39,7 @@ def test_upload_download_file_roundtrip(s3_store, tmp_path):
 
 
 def test_exists_true_and_false(s3_store):
-    uri = s3_store.upload_jsonl([{"a": 1}], "run1/step/data.jsonl")
+    uri = s3_store.upload_json({"a": 1}, "run1/step/data.json")
     assert s3_store.exists(uri)
-    fake_uri = s3_store.to_uri("run1/step/missing.jsonl")
+    fake_uri = s3_store.to_uri("run1/step/missing.json")
     assert not s3_store.exists(fake_uri)

@@ -1,11 +1,11 @@
 """End-to-end runner tests using FilesystemStore."""
 from __future__ import annotations
 
-from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
-from runlet import BaseArtifact, BaseStep, FilesystemStore, artifact
+from runlet import BaseStep
 from runlet.orchestrator.config import PipelineConfig
 from runlet.orchestrator.context import PipelineContext
 from runlet.orchestrator.dag import DAG
@@ -13,32 +13,21 @@ from runlet.orchestrator.models import RunnerConfig
 from runlet.orchestrator.runner import SequentialRunner
 
 
-@artifact(version=1)
-class CountRecord(BaseArtifact):
-    value: int
-
-
-@artifact(version=1)
-class SumRecord(BaseArtifact):
-    total: int
-
-
 class ProducerStep(BaseStep):
-    def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-        for i in range(3):
-            yield CountRecord(value=i)
+    def execute(self, context: PipelineContext) -> dict[str, Any]:
+        return {"values": [0, 1, 2], "count": 3}
 
 
 class ConsumerStep(BaseStep):
-    def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-        total = sum(r.value for r in context.iter_artifacts("producer", CountRecord))
-        yield SumRecord(total=total)
+    def execute(self, context: PipelineContext) -> dict[str, Any]:
+        upstream = context.get_output("producer")
+        total = sum(upstream["values"])
+        return {"total": total}
 
 
 class FailingStep(BaseStep):
-    def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+    def execute(self, context: PipelineContext) -> dict[str, Any]:
         raise RuntimeError("intentional failure")
-        yield  # make it a generator
 
 
 def _build_pipeline_config(store_dir: str, steps_cfg: list) -> dict:
@@ -56,18 +45,6 @@ def store_dir(tmp_path):
 
 def test_two_step_pipeline_success(store_dir, monkeypatch):
     # Patch dynamic import so runner can find our test steps
-    original_import = __import__
-
-    def fake_import(name, *args, **kwargs):
-        if name == "test_steps":
-            import types
-            m = types.ModuleType("test_steps")
-            m.ProducerStep = ProducerStep
-            m.ConsumerStep = ConsumerStep
-            return m
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.__import__", fake_import)
     import importlib
     original_import_module = importlib.import_module
 
@@ -100,7 +77,7 @@ def test_two_step_pipeline_success(store_dir, monkeypatch):
     assert result.failed_step is None
 
 
-def test_resume_skips_completed_steps(store_dir, monkeypatch):
+def test_resume_skips_completed_steps(store_dir, tmp_path, monkeypatch):
     import importlib
     original_import_module = importlib.import_module
 
@@ -115,6 +92,12 @@ def test_resume_skips_completed_steps(store_dir, monkeypatch):
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
 
+    from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
+
+    # Use a file-backed SQLite DB so the data persists after the first runner closes
+    # its connection.
+    db_path = str(tmp_path / "meta.db")
+
     raw = _build_pipeline_config(store_dir, [
         {"name": "producer", "module": "test_steps", "class": "ProducerStep", "depends_on": []},
         {
@@ -125,63 +108,63 @@ def test_resume_skips_completed_steps(store_dir, monkeypatch):
     cfg = PipelineConfig.from_dict(raw)
     dag = DAG(cfg)
 
-    # First run
-    runner = SequentialRunner(dag, RunnerConfig())
+    # First run — populates metastore; runner closes the connection when done.
+    runner = SequentialRunner(
+        dag, RunnerConfig(), metastore=SqliteMetastore(SqliteConfig(db_path=db_path))
+    )
     result1 = runner.run("run002")
     assert result1.success
 
-    # Resume run
-    runner2 = SequentialRunner(dag, RunnerConfig(resume=True))
+    # Resume run — opens a fresh connection to the same file and reads prior step records.
+    runner2 = SequentialRunner(
+        dag, RunnerConfig(resume=True), metastore=SqliteMetastore(SqliteConfig(db_path=db_path))
+    )
     result2 = runner2.run("run002")
     assert result2.steps_skipped == ["producer", "consumer"]
     assert result2.steps_executed == []
 
 
-def test_step_inputs_not_polluted_by_store_config(store_dir, monkeypatch):
-    """Infrastructure config (bucket, prefix) must never appear in context.metadata."""
+def test_downstream_reads_upstream_output(store_dir, monkeypatch):
+    """ConsumerStep must be able to read ProducerStep's output dict."""
+    received: list[dict] = []
+
+    class CapturingConsumer(BaseStep):
+        def execute(self, context: PipelineContext) -> dict[str, Any]:
+            out = context.get_output("producer")
+            received.append(out)
+            return {"captured": True}
+
     import importlib
-    original_import_module = importlib.import_module
+    original = importlib.import_module
 
-    seen_metadata: dict = {}
-
-    class MetadataSnifferStep(BaseStep):
-        def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-            seen_metadata.update(context.metadata)
-            yield CountRecord(value=0)
-
-    def fake_import_module(name, *args, **kwargs):
+    def fake(name, *args, **kwargs):
         if name == "test_steps":
             import types
             m = types.ModuleType("test_steps")
-            m.MetadataSnifferStep = MetadataSnifferStep
+            m.ProducerStep = ProducerStep
+            m.CapturingConsumer = CapturingConsumer
             return m
-        return original_import_module(name, *args, **kwargs)
+        return original(name, *args, **kwargs)
 
-    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(importlib, "import_module", fake)
 
     raw = _build_pipeline_config(store_dir, [
+        {"name": "producer", "module": "test_steps", "class": "ProducerStep", "depends_on": []},
         {
-            "name": "sniffer",
-            "module": "test_steps",
-            "class": "MetadataSnifferStep",
-            "depends_on": [],
+            "name": "consumer", "module": "test_steps", "class": "CapturingConsumer",
+            "depends_on": ["producer"],
         },
     ])
     cfg = PipelineConfig.from_dict(raw)
     dag = DAG(cfg)
-    runner = SequentialRunner(
-        dag,
-        RunnerConfig(),
-        step_inputs={"source_key": "uploads/foo.pdf", "user_id": "u-1"},
-        store_overrides={"bucket": "my-bucket", "prefix": "auth/u-1/job-1"},
-    )
+    runner = SequentialRunner(dag, RunnerConfig())
     result = runner.run("run004")
 
     assert result.success
-    assert seen_metadata.get("source_key") == "uploads/foo.pdf"
-    assert seen_metadata.get("user_id") == "u-1"
-    assert "bucket" not in seen_metadata
-    assert "prefix" not in seen_metadata
+    assert received == [{"values": [0, 1, 2], "count": 3}]
+
+
+def test_failing_step_returns_failed_result(store_dir, monkeypatch):
     import importlib
     original_import_module = importlib.import_module
 
@@ -212,7 +195,48 @@ def test_step_inputs_not_polluted_by_store_config(store_dir, monkeypatch):
     assert result.failed_step == "failing"
     assert "producer" in result.steps_executed
 
-    # Producer artifacts should still exist
-    store = FilesystemStore(store_dir)
-    producer_uri = store.to_uri("run003/producer/output.jsonl")
-    assert store.exists(producer_uri) or True  # path depends on runner internals
+
+def test_pipeline_decorator_resume(store_dir, tmp_path):
+    """Pipeline.run(resume=True) skips steps already recorded in the metastore."""
+    from runlet import Pipeline
+    from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
+
+    db_path = str(tmp_path / "meta.db")
+
+    pipe = Pipeline(
+        "decorator-resume-test",
+        store={"type": "filesystem", "base_dir": store_dir},
+    )
+
+    executions: list[str] = []
+
+    @pipe.step("step_a")
+    def step_a(context):
+        executions.append("step_a")
+        return {"value": 1}
+
+    @pipe.step("step_b", depends_on=["step_a"])
+    def step_b(context):
+        executions.append("step_b")
+        return {"value": 2}
+
+    # First run — both steps execute and are recorded in the metastore.
+    result1 = pipe.run(
+        "dec-run001",
+        metastore=SqliteMetastore(SqliteConfig(db_path=db_path)),
+    )
+    assert result1.success
+    assert executions == ["step_a", "step_b"]
+
+    executions.clear()
+
+    # Resume run — both steps are already in the metastore as SUCCESS, so skipped.
+    result2 = pipe.run(
+        "dec-run001",
+        resume=True,
+        metastore=SqliteMetastore(SqliteConfig(db_path=db_path)),
+    )
+    assert result2.success
+    assert result2.steps_skipped == ["step_a", "step_b"]
+    assert result2.steps_executed == []
+    assert executions == []

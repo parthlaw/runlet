@@ -21,5 +21,3 @@ class PipelineExecutionError(RuntimeError):
     """Raised when a step fails and the runner cannot continue."""
 
 
-class StateNotFoundError(RuntimeError):
-    """Raised when attempting to resume a run with no existing state file."""

@@ -3,33 +3,28 @@
 from __future__ import annotations
 
 import concurrent.futures
-import contextlib
 import copy
+import dataclasses
+import json
 import logging
-import os
 import re
-import tempfile
 import threading
 import time
 import traceback
 from pathlib import Path
 from typing import Any
 
-from runlet.artifact_store import ArtifactStore, build_runtime_stores
-from runlet.artifacts.ref import ArtifactRef
-from runlet.artifacts.registry import ArtifactRegistry
-from runlet.artifacts.registry import registry as _global_artifact_registry
-from runlet.artifacts.writer import write_step_artifacts
+from runlet.artifact_store import build_runtime_stores
 from runlet.orchestrator.condition_evaluator import evaluate_condition
 from runlet.orchestrator.config.models import PipelineConfig, StepConfig
 from runlet.orchestrator.dag import DAG
 from runlet.orchestrator.errors import ConditionEvaluationError
 from runlet.orchestrator.executor import ThreadedExecutor
 from runlet.orchestrator.models import RunnerConfig, RunResult
+from runlet.orchestrator.registry import ConfigStepRegistry, StepRegistry
 from runlet.orchestrator.retry import DEFAULT_POLICY, RetryPolicy
 from runlet.orchestrator.state import RunState, StepStatus
 from runlet.orchestrator.writer_context import WriterContext, build_context
-from runlet.steps.loader import load_step
 
 logger = logging.getLogger(__name__)
 
@@ -54,25 +49,30 @@ class SequentialRunner:
         self,
         dag: DAG,
         runner_config: RunnerConfig | None = None,
-        step_inputs: dict[str, Any] | None = None,
-        store_overrides: dict[str, Any] | None = None,
-        artifact_registry: ArtifactRegistry | None = None,
+        initial_metadata: dict[str, Any] | None = None,
         llm: Any | None = None,
         metastore: Any | None = None,
+        step_registry: StepRegistry | None = None,
     ) -> None:
         self._dag = dag
-        self._config = runner_config or RunnerConfig()
-        self._step_inputs: dict[str, Any] = step_inputs or {}
-        self._store_overrides: dict[str, Any] = store_overrides or {}
+        self._config = runner_config or dag.config.runner
+        self._initial_metadata: dict[str, Any] = initial_metadata or {}
         self._cancel_event = threading.Event()
-        self._artifact_registry = artifact_registry or _global_artifact_registry
         self._llm = llm
+        self._registry: StepRegistry = step_registry or ConfigStepRegistry(dag.config)
+        self._registry.validate(dag.config.step_names)
         if metastore is not None:
             self._metastore = metastore
         else:
             from runlet.metastore import build_metastore
 
-            self._metastore = build_metastore(self._config.metastore_raw)
+            self._metastore = build_metastore(self._config.metastore)
+
+        # Ensure tables exist; CREATE TABLE IF NOT EXISTS makes this idempotent.
+        try:
+            self._metastore.init_schema()
+        except Exception as exc:
+            logger.warning("Metastore init_schema() failed (non-fatal): %s", exc)
 
     def cancel(self) -> None:
         """Signal the runner to stop dispatching new steps after the current ones complete."""
@@ -82,9 +82,9 @@ class SequentialRunner:
         _validate_run_id(run_id)
 
         pipeline_cfg = self._dag.config
-        store, upload_store, store_prefix = build_runtime_stores(
-            pipeline_cfg.store_raw,
-            self._store_overrides,
+        store, upload_store, _ = build_runtime_stores(
+            pipeline_cfg.store,
+            self._initial_metadata,
         )
 
         context = build_context(
@@ -92,16 +92,14 @@ class SequentialRunner:
             pipeline_name=pipeline_cfg.name,
             store=store,
             upload_store=upload_store,
-            metadata=self._step_inputs.copy(),
-            artifact_registry=self._artifact_registry,
+            metadata=self._initial_metadata.copy(),
             llm=self._llm,
+            cancel_event=self._cancel_event,
         )
 
         state = self._initialise_state(
             run_id=run_id,
             pipeline_cfg=pipeline_cfg,
-            store=store,
-            store_prefix=store_prefix,
             context=context,
         )
         _safe_metastore(self._metastore.record_run_started, run_id, pipeline_cfg.name)
@@ -109,7 +107,7 @@ class SequentialRunner:
         steps_executed: list[str] = []
         steps_skipped: list[str] = []
         _tracking_lock = threading.Lock()
-        failure_info: dict[str, str] = {}  # {"step": name, "error": msg}
+        failure_info: dict[str, str] = {}
 
         def execute_step(step_name: str) -> None:
             if self._cancel_event.is_set():
@@ -148,32 +146,30 @@ class SequentialRunner:
                     _safe_metastore(
                         self._metastore.record_step_failed, run_id, step_name, 1, 0.0, error_msg
                     )
-                    failure_info.update({"step": step_name, "error": error_msg})
+                    with _tracking_lock:
+                        if not failure_info:
+                            failure_info["step"] = step_name
+                            failure_info["error"] = error_msg
                     raise
 
             try:
-                step_instance = load_step(step_cfg)
+                step_instance = self._registry.get(step_name)
             except Exception as exc:
                 error_msg = _format_error(step_name, exc)
                 state.mark_step_failed(step_name=step_name, error=error_msg, duration_seconds=0.0)
                 _safe_metastore(
                     self._metastore.record_step_failed, run_id, step_name, 1, 0.0, error_msg
                 )
-                failure_info.update({"step": step_name, "error": error_msg})
+                with _tracking_lock:
+                    if not failure_info:
+                        failure_info["step"] = step_name
+                        failure_info["error"] = error_msg
                 raise
-
-            compress = bool(step_cfg.config.get("compress", False))
-            suffix = ".jsonl.gz" if compress else ".jsonl"
-            _, tmp_final_path = tempfile.mkstemp(
-                prefix=f"pr_{run_id}_{step_name}_", suffix=suffix
-            )
 
             policy = RetryPolicy.from_config(step_cfg.retry) if step_cfg.retry else DEFAULT_POLICY
             attempt = 0
             started_at = time.monotonic()
             success_flag = False
-            schema_info: dict[str, Any] = {}
-            record_count = 0
 
             try:
                 while True:
@@ -182,29 +178,13 @@ class SequentialRunner:
                     _safe_metastore(self._metastore.record_step_running, run_id, step_name, attempt)
                     started_at = time.monotonic()
                     try:
-                        artifact_cls, record_count = _execute_with_timeout(
+                        output = _execute_with_timeout(
                             step_instance=step_instance,
                             context=context,
                             step_name=step_name,
-                            run_id=run_id,
-                            tmp_final_path=tmp_final_path,
                             step_cfg=step_cfg,
                         )
-                        _upload_step_output(
-                            context=context,
-                            step_name=step_name,
-                            local_path=tmp_final_path,
-                            compress=compress,
-                            schema_name=artifact_cls.SCHEMA_NAME,
-                            schema_version=artifact_cls.SCHEMA_VERSION,
-                        )
-                        schema_info = {
-                            "output": {
-                                "name": artifact_cls.SCHEMA_NAME,
-                                "version": artifact_cls.SCHEMA_VERSION,
-                                "record_count": record_count,
-                            }
-                        }
+                        context.set_output(step_name, output)
                         success_flag = True
                         break
                     except Exception as exc:
@@ -231,12 +211,11 @@ class SequentialRunner:
                             raise
 
                 duration = time.monotonic() - started_at
-                step_output_paths = context.list_paths().get(step_name, {})
+                step_out = output
                 state.mark_step_success(
                     step_name=step_name,
-                    paths=step_output_paths,
+                    output=step_out,
                     duration_seconds=duration,
-                    schema_info=schema_info,
                     attempt=attempt,
                 )
                 _safe_metastore(
@@ -245,14 +224,11 @@ class SequentialRunner:
                     step_name,
                     attempt,
                     duration,
-                    {k: v.to_dict() for k, v in step_output_paths.items()},
-                    schema_info,
+                    step_out,
                 )
                 with _tracking_lock:
                     steps_executed.append(step_name)
-                logger.debug(
-                    "[%s] Streamed %d record(s) → artifact store.", step_name, record_count
-                )
+                logger.debug("[%s] Completed → output keys: %s", step_name, list(step_out))
 
             except Exception as exc:
                 duration = time.monotonic() - started_at
@@ -267,15 +243,16 @@ class SequentialRunner:
                     self._metastore.record_step_failed,
                     run_id, step_name, attempt, duration, error_msg,
                 )
-                failure_info.update({"step": step_name, "error": error_msg})
+                with _tracking_lock:
+                    if not failure_info:
+                        failure_info["step"] = step_name
+                        failure_info["error"] = error_msg
                 raise
             finally:
                 try:
                     step_instance.teardown(context, success_flag)
                 except Exception as te:
                     logger.warning("[%s] teardown() raised: %s", step_name, te)
-                with contextlib.suppress(OSError):
-                    os.remove(tmp_final_path)
 
         executor = ThreadedExecutor(max_workers=self._config.max_concurrent_steps)
 
@@ -293,7 +270,7 @@ class SequentialRunner:
             )
             state.mark_run_failed(error=error)
             _safe_metastore(self._metastore.record_run_failed, run_id, error)
-            self._metastore.close()
+            _safe_metastore(self._metastore.close)
             return RunResult(
                 run_id=run_id,
                 success=False,
@@ -302,15 +279,14 @@ class SequentialRunner:
                 steps_skipped=steps_skipped,
                 failed_step=failure_info.get("step"),
                 error=error,
-                state_uri=state.store_uri,
                 metadata=copy.deepcopy(dict(context.metadata)),
-                outputs=copy.deepcopy(context._outputs),
+                outputs=context.list_outputs(),
             )
 
         if self._cancel_event.is_set():
             state.mark_run_cancelled()
             _safe_metastore(self._metastore.record_run_cancelled, run_id)
-            self._metastore.close()
+            _safe_metastore(self._metastore.close)
             return RunResult(
                 run_id=run_id,
                 success=False,
@@ -319,14 +295,13 @@ class SequentialRunner:
                 steps_skipped=steps_skipped,
                 failed_step=None,
                 error=None,
-                state_uri=state.store_uri,
                 metadata=copy.deepcopy(dict(context.metadata)),
-                outputs=copy.deepcopy(context._outputs),
+                outputs=context.list_outputs(),
             )
 
         state.mark_run_success()
-        _safe_metastore(self._metastore.record_run_success, run_id, copy.deepcopy(context._outputs))
-        self._metastore.close()
+        _safe_metastore(self._metastore.record_run_success, run_id, context.list_outputs())
+        _safe_metastore(self._metastore.close)
         logger.info(
             "Pipeline '%s' finished. Executed: %s | Skipped: %s",
             pipeline_cfg.name,
@@ -341,44 +316,41 @@ class SequentialRunner:
             steps_skipped=steps_skipped,
             failed_step=None,
             error=None,
-            state_uri=state.store_uri,
             metadata=copy.deepcopy(dict(context.metadata)),
-            outputs=copy.deepcopy(context._outputs),
+            outputs=context.list_outputs(),
         )
 
     def _initialise_state(
         self,
         run_id: str,
         pipeline_cfg: PipelineConfig,
-        store: ArtifactStore,
-        store_prefix: str,
         context: WriterContext,
     ) -> RunState:
         if self._config.resume:
             try:
-                state = RunState.load_existing(
-                    run_id=run_id,
-                    pipeline_name=pipeline_cfg.name,
-                    store=store,
-                    store_prefix=store_prefix,
+                records = self._metastore.list_steps(run_id)
+                if records:
+                    state = RunState.restore_from_records(
+                        run_id=run_id,
+                        pipeline_name=pipeline_cfg.name,
+                        records=records,
+                    )
+                    context.restore_outputs(state.all_step_outputs())
+                    return state
+                logger.warning(
+                    "resume=True for run '%s' but no prior records found in metastore. "
+                    "Starting fresh. Configure a persistent metastore to enable resume.",
+                    run_id,
                 )
-                context.restore_paths(state.all_step_paths())
-                logger.info("Resuming run '%s'.", run_id)
-                return state
             except Exception as exc:
                 logger.warning(
-                    "Could not load existing state for run '%s' (reason: %s). "
+                    "Could not load state for run '%s' from metastore (reason: %s). "
                     "Starting fresh.",
                     run_id,
                     exc,
                 )
 
-        return RunState.create_new(
-            run_id=run_id,
-            pipeline_name=pipeline_cfg.name,
-            store=store,
-            store_prefix=store_prefix,
-        )
+        return RunState(run_id=run_id, pipeline_name=pipeline_cfg.name)
 
 
 # ---------------------------------------------------------------------------
@@ -398,60 +370,48 @@ def _execute_with_timeout(
     step_instance: Any,
     context: WriterContext,
     step_name: str,
-    run_id: str,
-    tmp_final_path: str,
     step_cfg: StepConfig,
-) -> tuple[Any, int]:
-    """Run write_step_artifacts, raising TimeoutError if timeout_seconds is exceeded."""
+) -> dict[str, Any]:
+    """
+    Call step_instance.execute(context) and return its dict output.
+
+    If timeout_seconds is set, raises TimeoutError when exceeded.
+
+    KNOWN LIMITATION: when the timeout fires the step thread is NOT killed —
+    Python does not support thread cancellation. The thread leaks until the
+    step naturally returns or the process exits.
+    """
+    def _run() -> dict[str, Any]:
+        output = step_instance.execute(context)
+        if not isinstance(output, dict):
+            raise TypeError(
+                f"Step '{step_name}' must return a dict, got {type(output).__name__}. "
+                "Return a JSON-serializable dict from execute()."
+            )
+        try:
+            json.dumps(output)
+        except (TypeError, ValueError) as exc:
+            raise TypeError(
+                f"Step '{step_name}' returned a non-JSON-serializable dict: {exc}"
+            ) from exc
+        return output
+
     timeout_s = step_cfg.config.get("timeout_seconds")
     if timeout_s is None:
-        return write_step_artifacts(
-            step_instance=step_instance,
-            context=context,
-            step_name=step_name,
-            run_id=run_id,
-            tmp_final_path=tmp_final_path,
-        )
+        return _run()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(
-            write_step_artifacts,
-            step_instance=step_instance,
-            context=context,
-            step_name=step_name,
-            run_id=run_id,
-            tmp_final_path=tmp_final_path,
-        )
-        try:
-            return future.result(timeout=float(timeout_s))
-        except concurrent.futures.TimeoutError:
-            raise TimeoutError(
-                f"Step {step_name!r} exceeded timeout of {timeout_s}s"
-            ) from None
-
-
-def _upload_step_output(
-    context: WriterContext,
-    step_name: str,
-    local_path: str,
-    compress: bool,
-    schema_name: str,
-    schema_version: int,
-) -> ArtifactRef:
-    """Upload step output as a content-addressed blob and register in context."""
-    with open(local_path, "rb") as fh:
-        content_hash = context.store.put_blob(fh, hint_key=f"{context.run_id}/{step_name}/output")
-    context.store.put_pointer(f"{context.run_id}/{step_name}/output", content_hash)
-    blob_uri = context.store.blob_uri(content_hash)
-    ref = ArtifactRef(
-        uri=blob_uri,
-        schema_name=schema_name,
-        schema_version=schema_version,
-        content_hash=content_hash,
-        is_compressed=compress,
-    )
-    context.set_path(step_name=step_name, output_name="output", ref=ref)
-    return ref
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(_run)
+    try:
+        result = future.result(timeout=float(timeout_s))
+        pool.shutdown(wait=True)
+        return result
+    except concurrent.futures.TimeoutError:
+        pool.shutdown(wait=False)
+        raise TimeoutError(
+            f"Step {step_name!r} exceeded timeout of {timeout_s}s. "
+            "The step thread continues running in the background."
+        ) from None
 
 
 def _has_skipped_dependency(step_cfg: StepConfig, state: RunState) -> bool:
@@ -470,9 +430,7 @@ def _format_error(step_name: str, exc: Exception) -> str:
 def build_runner(
     config_path: Path | str,
     resume: bool = False,
-    step_inputs: dict[str, Any] | None = None,
-    store_overrides: dict[str, Any] | None = None,
-    artifact_registry: ArtifactRegistry | None = None,
+    initial_metadata: dict[str, Any] | None = None,
 ) -> SequentialRunner:
     """Factory: load a pipeline JSON config and return a ready-to-run SequentialRunner.
 
@@ -489,31 +447,21 @@ def build_runner(
         business rules before constructing the runner.
     """
     pipeline_cfg = PipelineConfig.from_file(config_path)
-    raw = pipeline_cfg.raw
 
-    runner_cfg = RunnerConfig.from_dict(raw.get("runner", {}))
+    runner_cfg = pipeline_cfg.runner
     if resume:
-        runner_cfg = RunnerConfig(
-            resume=True,
-            log_level=runner_cfg.log_level,
-            max_concurrent_steps=runner_cfg.max_concurrent_steps,
-            metastore_raw=runner_cfg.metastore_raw,
-        )
+        runner_cfg = dataclasses.replace(runner_cfg, resume=True)
 
     llm = None
-    if pipeline_cfg.llm_raw is not None:
-        from runlet.llm.config import LLMConfig
+    if pipeline_cfg.llm is not None:
         from runlet.llm.proxy import LLMProxy
 
-        llm_config = LLMConfig.from_dict(pipeline_cfg.llm_raw)
-        llm = LLMProxy.from_config(llm_config)
+        llm = LLMProxy.from_config(pipeline_cfg.llm)
 
     dag = DAG(pipeline_cfg)
     return SequentialRunner(
         dag=dag,
         runner_config=runner_cfg,
-        step_inputs=step_inputs,
-        store_overrides=store_overrides,
-        artifact_registry=artifact_registry,
+        initial_metadata=initial_metadata,
         llm=llm,
     )

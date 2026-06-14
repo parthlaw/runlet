@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from runlet.artifact_store import StoreConfig, build_store_config
+from runlet.llm.config import LLMConfig
 from runlet.orchestrator.errors import ConfigValidationError
+from runlet.orchestrator.models import RunnerConfig
 
 ALLOWED_CONDITION_OPS = frozenset({"==", "!=", ">", "<", ">=", "<="})
+_SAFE_STEP_NAME = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
 
 
 @dataclass(frozen=True)
@@ -91,6 +96,11 @@ class StepConfig:
                 raise ConfigValidationError(
                     f"Step config missing required field '{key}': {data}"
                 )
+        if not _SAFE_STEP_NAME.match(data["name"]):
+            raise ConfigValidationError(
+                f"Invalid step name {data['name']!r}. "
+                "Only alphanumeric, hyphen, and underscore are allowed (max 128 chars)."
+            )
         depends_on = tuple(data.get("depends_on", []))
         condition = None
         if data.get("condition") is not None:
@@ -125,8 +135,8 @@ class PipelineConfig:
         Short string prepended to auto-generated run IDs.
     steps:
         Ordered tuple of :class:`StepConfig` objects.
-    store_raw:
-        Raw artifact store config dict.
+    store:
+        Typed artifact store configuration.
     raw:
         Full raw dict for any extension points.
     """
@@ -134,9 +144,10 @@ class PipelineConfig:
     name: str
     run_id_prefix: str
     steps: tuple[StepConfig, ...]
-    store_raw: dict[str, Any]
+    store: StoreConfig
+    runner: RunnerConfig = field(default_factory=RunnerConfig, compare=False)
     raw: dict[str, Any] = field(default_factory=dict, compare=False)
-    llm_raw: dict[str, Any] | None = field(default=None, compare=False)
+    llm: LLMConfig | None = field(default=None, compare=False)
 
     @classmethod
     def from_file(cls, path: Path | str) -> PipelineConfig:
@@ -167,9 +178,10 @@ class PipelineConfig:
             name=pipeline_block["name"],
             run_id_prefix=pipeline_block.get("run_id_prefix", "run"),
             steps=steps,
-            store_raw=raw["store"],
+            store=build_store_config(raw["store"]),
+            runner=RunnerConfig.from_dict(raw.get("runner", {})),
             raw=raw,
-            llm_raw=raw.get("llm"),
+            llm=LLMConfig.from_dict(raw["llm"]) if raw.get("llm") else None,
         )
 
     def get_step(self, name: str) -> StepConfig:

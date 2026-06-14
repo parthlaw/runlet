@@ -1,9 +1,12 @@
 """Tests for the RunMetastore ABC contract using NoopMetastore. No optional deps required."""
 
+import pytest
+
 from runlet.metastore import (
     NoopMetastore,
     RunMetastore,
     build_metastore,
+    build_metastore_config,
 )
 
 
@@ -13,12 +16,12 @@ def test_build_metastore_none_returns_noop():
 
 
 def test_build_metastore_empty_dict_returns_noop():
-    ms = build_metastore({})
+    ms = build_metastore(build_metastore_config({}))
     assert isinstance(ms, NoopMetastore)
 
 
 def test_build_metastore_explicit_noop():
-    ms = build_metastore({"type": "noop"})
+    ms = build_metastore(build_metastore_config({"type": "noop"}))
     assert isinstance(ms, NoopMetastore)
 
 
@@ -31,7 +34,7 @@ def test_noop_writes_are_silent():
     ms = NoopMetastore()
     ms.record_run_started("r1", "my-pipe")
     ms.record_step_running("r1", "extract", 1)
-    ms.record_step_success("r1", "extract", 1, 1.5, {"output": {"uri": "x"}}, {"count": 10})
+    ms.record_step_success("r1", "extract", 1, 1.5, {"data_uri": "x", "count": 10})
     ms.record_step_skipped("r1", "load")
     ms.record_run_success("r1")
     ms.close()
@@ -67,42 +70,24 @@ def test_noop_record_run_success_accepts_outputs():
     ms.record_run_success("r3", outputs={"score": 0.9, "download_url": "s3://bucket/key"})
     ms.close()
 
+    with pytest.raises(ValueError, match="is not a valid MetastoreType"):
+        build_metastore_config({"type": "oracle"})
 
-def test_noop_record_run_success_no_outputs():
-    ms = NoopMetastore()
-    ms.record_run_started("r4", "pipe")
-    ms.record_run_success("r4")  # backward-compat: outputs defaults to None
+
+def test_record_run_success_stores_outputs_in_sqlite(tmp_path):
+    """record_run_success() must persist the outputs dict so get_run().outputs is populated."""
+    from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
+
+    cfg = SqliteConfig(db_path=str(tmp_path / "meta.db"))
+    ms = SqliteMetastore(cfg)
+    ms.init_schema()
+
+    outputs = {"step_a": {"count": 42}, "step_b": {"uri": "s3://bucket/key"}}
+    ms.record_run_started("r-outputs", "pipe")
+    ms.record_run_success("r-outputs", outputs)
+
+    rec = ms.get_run("r-outputs")
+    assert rec is not None
+    assert rec.status == "success"
+    assert rec.outputs == outputs
     ms.close()
-
-
-def test_run_record_has_outputs_field():
-    import datetime
-
-    from runlet.metastore.metastore import RunRecord
-
-    rec = RunRecord(
-        run_id="r5",
-        pipeline_name="pipe",
-        status="success",
-        error=None,
-        created_at=datetime.datetime.now(tz=datetime.UTC),
-        updated_at=datetime.datetime.now(tz=datetime.UTC),
-        outputs={"score": 0.95},
-    )
-    assert rec.outputs == {"score": 0.95}
-
-
-def test_run_record_outputs_defaults_to_empty():
-    import datetime
-
-    from runlet.metastore.metastore import RunRecord
-
-    rec = RunRecord(
-        run_id="r6",
-        pipeline_name="pipe",
-        status="success",
-        error=None,
-        created_at=datetime.datetime.now(tz=datetime.UTC),
-        updated_at=datetime.datetime.now(tz=datetime.UTC),
-    )
-    assert rec.outputs == {}

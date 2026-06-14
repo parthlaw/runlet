@@ -10,7 +10,7 @@ Run with:
 
 import pytest
 
-from runlet.metastore import build_metastore
+from runlet.metastore import build_metastore, build_metastore_config
 from runlet.metastore.stores.sqlite import SqliteConfig, SqliteMetastore
 
 
@@ -56,8 +56,7 @@ def test_step_success_lifecycle(metastore):
     metastore.record_step_running("test-run4", "extract", 1)
     metastore.record_step_success(
         "test-run4", "extract", 1, 2.5,
-        {"output": {"uri": "blob://abc"}},
-        {"output": {"name": "Record", "version": 1, "record_count": 42}},
+        {"data_uri": "file:///tmp/data.jsonl", "record_count": 42},
     )
 
     steps = metastore.list_steps("test-run4")
@@ -66,8 +65,8 @@ def test_step_success_lifecycle(metastore):
     assert s.status == "success"
     assert s.attempt == 1
     assert s.duration_seconds == pytest.approx(2.5)
-    assert s.paths == {"output": {"uri": "blob://abc"}}
-    assert s.schema_info["output"]["record_count"] == 42
+    assert s.output["record_count"] == 42
+    assert s.output["data_uri"] == "file:///tmp/data.jsonl"
 
 
 def test_step_retry_creates_separate_rows(metastore):
@@ -75,7 +74,7 @@ def test_step_retry_creates_separate_rows(metastore):
     metastore.record_step_running("test-run5", "load", 1)
     metastore.record_step_failed("test-run5", "load", 1, 0.1, "timeout")
     metastore.record_step_running("test-run5", "load", 2)
-    metastore.record_step_success("test-run5", "load", 2, 1.2, {}, {})
+    metastore.record_step_success("test-run5", "load", 2, 1.2, {})
 
     steps = metastore.list_steps("test-run5")
     assert len(steps) == 2
@@ -160,7 +159,9 @@ def test_in_memory_db():
 
 
 def test_build_metastore_returns_sqlite_instance(tmp_path):
-    ms = build_metastore({"type": "sqlite", "db_path": str(tmp_path / "smoke.db")})
+    ms = build_metastore(
+        build_metastore_config({"type": "sqlite", "db_path": str(tmp_path / "smoke.db")})
+    )
     assert isinstance(ms, SqliteMetastore)
     ms.init_schema()
     ms.close()

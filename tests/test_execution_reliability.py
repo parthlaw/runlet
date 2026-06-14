@@ -1,25 +1,16 @@
-"""Tests for Plan 2: Execution Reliability features."""
+"""Tests for execution reliability features: retry, timeout, validate_config, teardown, cancellation."""  # noqa: E501
 from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Iterator
+from typing import Any
 
-from runlet import BaseArtifact, BaseStep, artifact
+from runlet import BaseStep
 from runlet.orchestrator.config import PipelineConfig
 from runlet.orchestrator.context import PipelineContext
 from runlet.orchestrator.dag import DAG
 from runlet.orchestrator.models import RunnerConfig, RunResult
 from runlet.orchestrator.runner import SequentialRunner
-
-# ---------------------------------------------------------------------------
-# Shared artifact types
-# ---------------------------------------------------------------------------
-
-@artifact(version=1)
-class SimpleRecord(BaseArtifact):
-    value: int
-
 
 # ---------------------------------------------------------------------------
 # Test helpers
@@ -73,11 +64,11 @@ class TestRetry:
         call_counts: list[int] = [0]
 
         class FlakyStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
                 call_counts[0] += 1
                 if call_counts[0] < 3:
                     raise ValueError("transient error")
-                yield SimpleRecord(value=call_counts[0])
+                return {"call_count": call_counts[0]}
 
         _fake_import(monkeypatch, FlakyStep=FlakyStep)
 
@@ -98,10 +89,9 @@ class TestRetry:
         call_counts: list[int] = [0]
 
         class AlwaysFailStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
                 call_counts[0] += 1
                 raise RuntimeError("always fails")
-                yield  # make it a generator
 
         _fake_import(monkeypatch, AlwaysFailStep=AlwaysFailStep)
 
@@ -127,9 +117,9 @@ class TestRetry:
 class TestTimeout:
     def test_step_exceeds_timeout_raises_timeout_error(self, tmp_path, monkeypatch):
         class SlowStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-                time.sleep(0.2)  # pool waits for this after TimeoutError
-                yield SimpleRecord(value=1)
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
+                time.sleep(0.2)
+                return {"done": True}
 
         _fake_import(monkeypatch, SlowStep=SlowStep)
 
@@ -156,8 +146,8 @@ class TestValidateConfig:
                 if "required_key" not in self.config:
                     raise ValueError("required_key is missing from config")
 
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-                yield SimpleRecord(value=1)
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
+                return {"done": True}
 
         _fake_import(monkeypatch, StrictStep=StrictStep)
 
@@ -182,8 +172,8 @@ class TestTeardown:
         teardown_calls: list[bool] = []
 
         class TeardownStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-                yield SimpleRecord(value=1)
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
+                return {"done": True}
 
             def teardown(self, context: PipelineContext, success: bool) -> None:
                 teardown_calls.append(success)
@@ -200,9 +190,8 @@ class TestTeardown:
         teardown_calls: list[bool] = []
 
         class FailingTdStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
                 raise RuntimeError("step fails")
-                yield
 
             def teardown(self, context: PipelineContext, success: bool) -> None:
                 teardown_calls.append(success)
@@ -219,8 +208,8 @@ class TestTeardown:
         """A teardown exception must not mask the original step result."""
 
         class TdRaisesStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-                yield SimpleRecord(value=1)
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
+                return {"done": True}
 
             def teardown(self, context: PipelineContext, success: bool) -> None:
                 raise RuntimeError("teardown exploded")
@@ -242,8 +231,8 @@ class TestTeardown:
 class TestCancellation:
     def test_cancel_before_run_returns_cancelled(self, tmp_path, monkeypatch):
         class NormalStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-                yield SimpleRecord(value=1)
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
+                return {"done": True}
 
         _fake_import(monkeypatch, NormalStep=NormalStep)
 
@@ -259,15 +248,14 @@ class TestCancellation:
         step2_executed: list[bool] = [False]
 
         class Step1(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-                yield SimpleRecord(value=1)
-                # Sleep inside generator so the cancel can arrive before step2 is dispatched
-                time.sleep(0.1)
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
+                time.sleep(0.1)  # give the cancel time to arrive
+                return {"done": True}
 
         class Step2(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
                 step2_executed[0] = True
-                yield SimpleRecord(value=1)
+                return {"done": True}
 
         _fake_import(monkeypatch, Step1=Step1, Step2=Step2)
 
@@ -304,15 +292,15 @@ class TestParallelExecution:
         end_times: dict[str, float] = {}
 
         class ProducerStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
-                yield SimpleRecord(value=1)
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
+                return {"done": True}
 
         class BranchStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
                 start_times[self.name] = time.monotonic()
                 time.sleep(0.1)  # simulate work
                 end_times[self.name] = time.monotonic()
-                yield SimpleRecord(value=1)
+                return {"done": True}
 
         _fake_import(monkeypatch, ProducerStep=ProducerStep, BranchStep=BranchStep)
 
@@ -344,9 +332,9 @@ class TestParallelExecution:
         order: list[str] = []
 
         class OrderedStep(BaseStep):
-            def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+            def execute(self, context: PipelineContext) -> dict[str, Any]:
                 order.append(self.name)
-                yield SimpleRecord(value=1)
+                return {"done": True}
 
         _fake_import(monkeypatch, OrderedStep=OrderedStep)
 

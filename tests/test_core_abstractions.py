@@ -1,5 +1,4 @@
-"""Tests for Plan 4: core abstractions (ArtifactRef, blob store, context split,
-store registry, run_id validation)."""
+"""Tests for core abstractions (blob store, context split, store registry, run_id validation)."""
 
 from __future__ import annotations
 
@@ -8,62 +7,17 @@ import pytest
 from runlet.artifact_store import (
     FilesystemStore,
     build_store,
+    build_store_config,
     register_store,
 )
-from runlet.artifacts.ref import ArtifactRef
+from runlet.orchestrator.config.models import StepConfig
 from runlet.orchestrator.context import PipelineContext, RuntimeContext
+from runlet.orchestrator.errors import ConfigValidationError
 from runlet.orchestrator.runner import _validate_run_id
 from runlet.orchestrator.writer_context import WriterContext, build_context
 
 # ---------------------------------------------------------------------------
-# 4.1 — ArtifactRef
-# ---------------------------------------------------------------------------
-
-def test_artifact_ref_is_hashable():
-    ref = ArtifactRef(uri="s3://bucket/key", schema_name="MySchema", schema_version=1)
-    d = {ref: "value"}
-    assert d[ref] == "value"
-    s = {ref}
-    assert ref in s
-
-
-def test_artifact_ref_usable_as_dict_key():
-    ref_a = ArtifactRef(uri="a", schema_name="A", schema_version=1)
-    ref_b = ArtifactRef(uri="b", schema_name="B", schema_version=2)
-    mapping = {ref_a: "first", ref_b: "second"}
-    assert mapping[ref_a] == "first"
-    assert mapping[ref_b] == "second"
-
-
-def test_artifact_ref_with_hash():
-    ref = ArtifactRef(uri="s3://bucket/blob", schema_name="S", schema_version=1)
-    assert ref.content_hash is None
-    ref2 = ref.with_hash("abc123")
-    assert ref2.content_hash == "abc123"
-    assert ref.content_hash is None  # original unchanged (frozen)
-
-
-def test_artifact_ref_round_trip():
-    ref = ArtifactRef(
-        uri="file:///tmp/blobs/ab/cd/abcd",
-        schema_name="Schema",
-        schema_version=2,
-        content_hash="abcd1234",
-        is_compressed=True,
-    )
-    assert ArtifactRef.from_dict(ref.to_dict()) == ref
-
-
-def test_artifact_ref_from_uri():
-    ref = ArtifactRef.from_uri("s3://b/k", "Schema", 3)
-    assert ref.uri == "s3://b/k"
-    assert ref.schema_name == "Schema"
-    assert ref.schema_version == 3
-    assert ref.content_hash is None
-
-
-# ---------------------------------------------------------------------------
-# 4.2 — Content-addressed blob store (FilesystemStore)
+# Content-addressed blob store (FilesystemStore)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -131,26 +85,28 @@ def test_blob_uri_format(fs_store, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 4.5 — RuntimeContext is read-only to steps
+# RuntimeContext is read-only to steps
 # ---------------------------------------------------------------------------
 
 def test_pipeline_context_is_alias_for_writer_context():
     assert PipelineContext is WriterContext
 
 
-def test_runtime_context_has_no_set_path():
+def test_runtime_context_and_writer_context_have_set_output():
     ctx = build_context(
         run_id="r",
         pipeline_name="p",
         store=FilesystemStore.__new__(FilesystemStore),
         upload_store=FilesystemStore.__new__(FilesystemStore),
     )
-    # WriterContext has set_path; RuntimeContext does not
-    assert hasattr(ctx, "set_path")
-    assert not hasattr(RuntimeContext, "set_path")
+    # Both RuntimeContext (step-level key/value) and WriterContext (runner-level step dict)
+    # expose set_output
+    assert hasattr(ctx, "set_output")
+    assert hasattr(RuntimeContext, "set_output")
 
 
-def test_writer_context_metadata_is_mutable(tmp_path):
+def test_writer_context_metadata_is_read_only(tmp_path):
+    """Steps must not be able to mutate shared pipeline metadata (P2-C fix)."""
     store = FilesystemStore(str(tmp_path))
     ctx = build_context(
         run_id="r",
@@ -159,8 +115,10 @@ def test_writer_context_metadata_is_mutable(tmp_path):
         upload_store=store,
         metadata={"key": "original"},
     )
-    ctx.metadata["key"] = "mutated"
-    assert ctx.metadata["key"] == "mutated"
+    import pytest as _pytest
+    with _pytest.raises(TypeError):
+        ctx.metadata["key"] = "mutated"  # type: ignore[index]
+    assert ctx.metadata["key"] == "original"
 
 
 def test_runtime_context_metadata_is_mapping(tmp_path):
@@ -178,32 +136,31 @@ def test_runtime_context_metadata_is_mapping(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 4.6 — register_store extensibility
+# register_store extensibility
 # ---------------------------------------------------------------------------
 
 def test_register_store_custom():
-    from runlet.artifact_store import STORE_REGISTRY
+    from runlet.artifact_store import STORE_REGISTRY, FilesystemConfig
 
     class MockStore(FilesystemStore):
-        @classmethod
-        def from_config(cls, cfg):
-            return cls(cfg.get("base_dir", "/tmp"))
+        pass
 
     register_store("mock", MockStore)
     try:
-        store = build_store({"type": "mock", "base_dir": "/tmp"})
-        assert isinstance(store, MockStore)
+        cfg = FilesystemConfig(base_dir="/tmp")
+        store = build_store(cfg)
+        assert isinstance(store, FilesystemStore)
     finally:
         STORE_REGISTRY.pop("mock", None)
 
 
 def test_build_store_unknown_type_raises():
-    with pytest.raises(ValueError, match="Unknown store type"):
-        build_store({"type": "nonexistent_xyz"})
+    with pytest.raises(ValueError, match="is not a valid StoreType"):
+        build_store_config({"type": "nonexistent_xyz"})
 
 
 # ---------------------------------------------------------------------------
-# 4.7 — run_id path-safety validation
+# run_id path-safety validation
 # ---------------------------------------------------------------------------
 
 def test_valid_run_ids():
@@ -229,3 +186,43 @@ def test_run_id_too_long_raises():
 def test_run_id_empty_raises():
     with pytest.raises(ValueError, match="unsafe characters"):
         _validate_run_id("")
+
+
+# ---------------------------------------------------------------------------
+# Step name path-safety validation (P1-C)
+# ---------------------------------------------------------------------------
+
+
+
+def _minimal_step(name: str) -> dict:
+    return {"name": name, "module": "m", "class": "C"}
+
+
+def test_valid_step_names():
+    for name in ["extract", "load-data", "step_01", "a" * 128, "X-Y_Z"]:
+        StepConfig.from_dict(_minimal_step(name))  # must not raise
+
+
+def test_step_name_path_traversal_raises():
+    with pytest.raises(ConfigValidationError, match="Invalid step name"):
+        StepConfig.from_dict(_minimal_step("../../etc/passwd"))
+
+
+def test_step_name_newline_raises():
+    with pytest.raises(ConfigValidationError, match="Invalid step name"):
+        StepConfig.from_dict(_minimal_step("step\nfoo"))
+
+
+def test_step_name_dot_raises():
+    with pytest.raises(ConfigValidationError, match="Invalid step name"):
+        StepConfig.from_dict(_minimal_step("step.with.dots"))
+
+
+def test_step_name_empty_raises():
+    with pytest.raises(ConfigValidationError, match="Invalid step name"):
+        StepConfig.from_dict(_minimal_step(""))
+
+
+def test_step_name_too_long_raises():
+    with pytest.raises(ConfigValidationError, match="Invalid step name"):
+        StepConfig.from_dict(_minimal_step("a" * 129))

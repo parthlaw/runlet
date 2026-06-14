@@ -1,5 +1,5 @@
 """
-S3ArtifactStore — boto3-backed artifact store for JSONL pipeline outputs.
+S3ArtifactStore — boto3-backed artifact store for pipeline artifacts.
 """
 
 from __future__ import annotations
@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import IO, Any, cast
+from typing import IO, Any, ClassVar, cast
 
 import boto3  # type: ignore[import-untyped]
 from botocore.exceptions import ClientError  # type: ignore[import-untyped]
@@ -16,14 +16,18 @@ from runlet.artifact_store.store import (
     ArtifactStore,
     ArtifactStoreDownloadError,
     ArtifactStoreUploadError,
+    StoreConfig,
+    StoreType,
 )
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class S3Config:
+class S3Config(StoreConfig):
     """S3 connection settings sourced from pipeline.json → store block."""
+
+    TYPE: ClassVar[StoreType] = StoreType.S3
 
     bucket: str
     region: str
@@ -41,23 +45,14 @@ class S3Config:
 
 
 class S3ArtifactStore(ArtifactStore):
-    """
-    Boto3-backed store that speaks JSONL.
-
-    Usage
-    -----
-    store = S3ArtifactStore(config)
-    key = store.build_key(run_id="run-01", step_name="extract", filename="output")
-    uri = store.upload_jsonl(records=[{"id": 1}], key=key)
-    records = store.download_jsonl(uri)
-    """
+    """Boto3-backed artifact store backed by an S3-compatible bucket."""
 
     def __init__(self, config: S3Config) -> None:
         self._config = config
         self._client = self._build_boto_client()
 
     def build_key(self, run_id: str, step_name: str, filename: str) -> str:
-        return f"{self._config.prefix}{run_id}/{step_name}/{filename}.jsonl"
+        return f"{self._config.prefix}{run_id}/{step_name}/{filename}.json"
 
     def to_uri(self, key: str) -> str:
         return f"s3://{self._config.bucket}/{key}"
@@ -70,37 +65,35 @@ class S3ArtifactStore(ArtifactStore):
             )
         return uri[len(prefix) :]
 
-    def upload_jsonl(self, records: list[dict[str, Any]], key: str) -> str:
-        body = _encode_jsonl(records)
+    def upload_json(self, data: dict[str, Any], key: str) -> str:
+        body = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
         try:
             self._client.put_object(
                 Bucket=self._config.bucket,
                 Key=key,
                 Body=body,
-                ContentType="application/x-ndjson",
+                ContentType="application/json",
             )
         except ClientError as exc:
             raise ArtifactStoreUploadError(
-                f"Failed to upload to s3://{self._config.bucket}/{key}: {exc}"
+                f"Failed to upload JSON to s3://{self._config.bucket}/{key}: {exc}"
             ) from exc
 
         uri = self.to_uri(key)
-        logger.info("Uploaded %d record(s) → %s", len(records), uri)
+        logger.debug("Wrote JSON → %s", uri)
         return uri
 
-    def download_jsonl(self, uri: str) -> list[dict[str, Any]]:
+    def download_json(self, uri: str) -> dict[str, Any]:
         key = self.uri_to_key(uri)
         try:
             response = self._client.get_object(Bucket=self._config.bucket, Key=key)
             raw = response["Body"].read().decode("utf-8")
         except ClientError as exc:
             raise ArtifactStoreDownloadError(
-                f"Failed to download {uri}: {exc}"
+                f"Failed to download JSON from {uri}: {exc}"
             ) from exc
 
-        records = _decode_jsonl(raw)
-        logger.info("Downloaded %d record(s) ← %s", len(records), uri)
-        return records
+        return cast(dict[str, Any], json.loads(raw))
 
     def exists(self, uri: str) -> bool:
         key = self.uri_to_key(uri)
@@ -264,15 +257,3 @@ class S3ArtifactStore(ArtifactStore):
         return boto3.client("s3", **kwargs)
 
 
-def _encode_jsonl(records: list[dict[str, Any]]) -> bytes:
-    lines = (json.dumps(record, ensure_ascii=False) for record in records)
-    return "\n".join(lines).encode("utf-8")
-
-
-def _decode_jsonl(raw: str) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for line in raw.splitlines():
-        line = line.strip()
-        if line:
-            records.append(json.loads(line))
-    return records

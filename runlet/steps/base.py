@@ -3,48 +3,53 @@ BaseStep — the abstract contract every pipeline step must implement.
 
 Quick start
 -----------
-Define a typed artifact, then yield instances from :meth:`execute`:
+Implement :meth:`execute` to return a JSON-serializable dict. That dict is
+stored in SQL as the step's output and made available to downstream steps via
+:meth:`~runlet.orchestrator.runtime_context.RuntimeContext.get_output`.
 
 .. code-block:: python
 
-    from dataclasses import dataclass
-    from runlet.artifacts import artifact
     from runlet.steps import BaseStep
-    from runlet.orchestrator.context import PipelineContext
-
-
-    @artifact(version=1)
-    @dataclass
-    class ExtractRecord:
-        page: int
-        text: str
+    from runlet.orchestrator.runtime_context import RuntimeContext
 
 
     class ExtractStep(BaseStep):
-        def execute(self, context: PipelineContext):
-            for page in pages:
-                yield ExtractRecord(page=page.num, text=page.text)
+        def execute(self, context: RuntimeContext) -> dict:
+            records = fetch_data()
+            return {"count": len(records), "status": "ok"}
 
-Reading upstream data
----------------------
-Use :meth:`~runlet.orchestrator.context.PipelineContext.iter_artifacts`:
+
+Passing large data between steps
+---------------------------------
+Store large data in the artifact store and put the reference URI in the
+output dict. The downstream step retrieves it by key. The framework is
+format-agnostic — use whatever serialization fits the data. For
+streaming helpers see :mod:`runlet.utils.streaming`.
 
 .. code-block:: python
 
-    class SummarizeStep(BaseStep):
-        def execute(self, context: PipelineContext):
-            for record in context.iter_artifacts("extract", ExtractRecord):
-                yield SummaryRecord(page=record.page, summary=...)
+    class ProducerStep(BaseStep):
+        def execute(self, context: RuntimeContext) -> dict:
+            key = context.artifact_store.build_key(context.run_id, self.name, "data")
+            with tempfile.NamedTemporaryFile() as tmp:
+                write_your_format(tmp, my_records())
+                context.artifact_store.upload_file(tmp.name, key)
+            return {"data_uri": context.artifact_store.to_uri(key), "record_count": 42}
+
+    class ConsumerStep(BaseStep):
+        def execute(self, context: RuntimeContext) -> dict:
+            upstream = context.get_output("producer")
+            with context.artifact_store.download_file(upstream["data_uri"]) as tmp:
+                records = read_your_format(tmp)
+            return {"processed": True}
 """
 
 from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
 from typing import Any
 
-from runlet.artifacts import BaseArtifact
 from runlet.orchestrator.runtime_context import RuntimeContext
 
 logger = logging.getLogger(__name__)
@@ -54,9 +59,9 @@ class BaseStep(ABC):
     """
     Abstract base class for all pipeline steps.
 
-    Implement :meth:`execute` as a generator that yields
-    :class:`~runlet.artifacts.BaseArtifact` instances. The runner
-    serializes them to JSONL and uploads to the artifact store.
+    Implement :meth:`execute` to return a JSON-serializable dict. The runner
+    stores it in SQL and exposes it to downstream steps via
+    ``context.get_output(step_name)``.
     """
 
     def __init__(self, name: str, config: dict[str, Any] | None = None) -> None:
@@ -65,8 +70,8 @@ class BaseStep(ABC):
         self.log: logging.Logger = logging.getLogger(f"step.{self.name}")
 
     @abstractmethod
-    def execute(self, context: RuntimeContext) -> Iterator[BaseArtifact]:
-        """Run the step logic. Yield one :class:`BaseArtifact` per output record."""
+    def execute(self, context: RuntimeContext) -> dict[str, Any]:
+        """Run the step. Return a JSON-serializable dict stored as this step's output."""
         ...
 
     def validate_config(self) -> None:  # noqa: B027

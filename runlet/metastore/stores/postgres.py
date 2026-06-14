@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from runlet.metastore.metastore import (
+    MetastoreConfig,
     MetastoreConnectionError,
     MetastoreError,
     MetastoreSchemaError,
+    MetastoreType,
     RunMetastore,
     RunRecord,
     StepRecord,
@@ -51,8 +53,7 @@ CREATE TABLE IF NOT EXISTS pipeline_steps (
     attempt          INT              NOT NULL DEFAULT 1,
     duration_seconds DOUBLE PRECISION,
     error            TEXT,
-    paths            JSONB            NOT NULL DEFAULT '{}',
-    schema_info      JSONB            NOT NULL DEFAULT '{}',
+    output           JSONB            NOT NULL DEFAULT '{}',
     recorded_at      TIMESTAMPTZ      NOT NULL DEFAULT now(),
     CONSTRAINT pipeline_steps_pkey          PRIMARY KEY (id),
     CONSTRAINT pipeline_steps_run_step_att  UNIQUE (run_id, step_name, attempt),
@@ -69,13 +70,15 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_steps_recorded_at
 
 
 @dataclass(frozen=True)
-class PostgresConfig:
+class PostgresConfig(MetastoreConfig):
     """
     Connection settings for PostgresMetastore.
 
     ``dsn`` is a libpq connection string or URL, e.g.:
         ``postgresql://user:pw@localhost:5432/pipeline_metastore``
     """
+
+    TYPE: ClassVar[MetastoreType] = MetastoreType.POSTGRES
 
     dsn: str
     connect_timeout: int = 10
@@ -149,7 +152,8 @@ class PostgresMetastore(RunMetastore):
             VALUES (%s, %s, 'running', now(), now())
             ON CONFLICT (run_id) DO UPDATE
               SET status = 'running',
-                  updated_at = now()
+                  updated_at = now(),
+                  outputs = '{}'
             """,
             (run_id, pipeline_name),
         )
@@ -209,8 +213,7 @@ class PostgresMetastore(RunMetastore):
         step_name: str,
         attempt: int,
         duration_seconds: float,
-        paths: dict[str, Any],
-        schema_info: dict[str, Any],
+        output: dict[str, Any],
     ) -> None:
         from psycopg.types.json import Jsonb
 
@@ -218,15 +221,15 @@ class PostgresMetastore(RunMetastore):
             """
             INSERT INTO pipeline_steps
                 (run_id, step_name, status, attempt,
-                 duration_seconds, paths, schema_info, recorded_at)
-            VALUES (%s, %s, 'success', %s, %s, %s, %s, now())
+                 duration_seconds, output, recorded_at)
+            VALUES (%s, %s, 'success', %s, %s, %s, now())
             ON CONFLICT (run_id, step_name, attempt) DO UPDATE
               SET status = 'success',
                   duration_seconds = EXCLUDED.duration_seconds,
-                  paths = EXCLUDED.paths,
-                  schema_info = EXCLUDED.schema_info
+                  output = EXCLUDED.output,
+                  error = NULL
             """,
-            (run_id, step_name, attempt, duration_seconds, Jsonb(paths), Jsonb(schema_info)),
+            (run_id, step_name, attempt, duration_seconds, Jsonb(output)),
         )
 
     def record_step_failed(
@@ -355,7 +358,6 @@ def _row_to_step_record(row: dict[str, Any]) -> StepRecord:
         attempt=row["attempt"],
         duration_seconds=row.get("duration_seconds"),
         error=row.get("error"),
-        paths=row.get("paths") or {},
-        schema_info=row.get("schema_info") or {},
+        output=row.get("output") or {},
         recorded_at=row["recorded_at"],
     )

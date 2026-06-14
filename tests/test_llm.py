@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib
 import types
-from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,7 +11,6 @@ from pydantic import BaseModel
 
 from runlet import BaseStep
 from runlet.artifact_store.stores.filesystem import FilesystemStore
-from runlet.artifacts import BaseArtifact, artifact
 from runlet.llm.config import LLMConfig
 from runlet.llm.proxy import LLMProxy
 from runlet.orchestrator.config import PipelineConfig
@@ -182,17 +180,13 @@ def test_build_runner_without_llm_block_context_llm_raises(tmp_path, monkeypatch
     """A pipeline without an 'llm' block should have context.llm raise RuntimeError."""
     llm_accessed: list[bool] = []
 
-    @artifact(version=1)
-    class Rec(BaseArtifact):
-        v: int
-
     class DummyStep(BaseStep):
-        def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+        def execute(self, context: PipelineContext) -> dict:
             try:
                 _ = context.llm
             except RuntimeError:
                 llm_accessed.append(False)
-            yield Rec(v=1)
+            return {"done": True}
 
     _fake_import(monkeypatch, DummyStep=DummyStep)
 
@@ -233,14 +227,10 @@ def test_build_runner_with_llm_block_wires_proxy(tmp_path, monkeypatch):
 
     llm_proxy_seen: list[object] = []
 
-    @artifact(version=1)
-    class Rec2(BaseArtifact):
-        v: int
-
     class LLMStep(BaseStep):
-        def execute(self, context: PipelineContext) -> Iterator[BaseArtifact]:
+        def execute(self, context: PipelineContext) -> dict:
             llm_proxy_seen.append(context.llm)
-            yield Rec2(v=1)
+            return {"done": True}
 
     _fake_import(monkeypatch, DummyStep=LLMStep)
 

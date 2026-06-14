@@ -9,12 +9,14 @@ import logging
 import sqlite3
 import threading
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from runlet.metastore.metastore import (
+    MetastoreConfig,
     MetastoreConnectionError,
     MetastoreError,
     MetastoreSchemaError,
+    MetastoreType,
     RunMetastore,
     RunRecord,
     StepRecord,
@@ -50,8 +52,7 @@ CREATE TABLE IF NOT EXISTS pipeline_steps (
     attempt          INTEGER  NOT NULL DEFAULT 1,
     duration_seconds REAL,
     error            TEXT,
-    paths            TEXT     NOT NULL DEFAULT '{}',
-    schema_info      TEXT     NOT NULL DEFAULT '{}',
+    output           TEXT     NOT NULL DEFAULT '{}',
     recorded_at      TEXT     NOT NULL,
     CONSTRAINT pipeline_steps_run_step_att  UNIQUE (run_id, step_name, attempt),
     CONSTRAINT pipeline_steps_status_check
@@ -71,7 +72,7 @@ def _now_iso() -> str:
 
 
 @dataclass(frozen=True)
-class SqliteConfig:
+class SqliteConfig(MetastoreConfig):
     """
     Connection settings for SqliteMetastore.
 
@@ -80,6 +81,8 @@ class SqliteConfig:
     before raising an error (maps to the *timeout* parameter of
     ``sqlite3.connect``).
     """
+
+    TYPE: ClassVar[MetastoreType] = MetastoreType.SQLITE
 
     db_path: str
     timeout: float = 30.0
@@ -106,7 +109,7 @@ class SqliteMetastore(RunMetastore):
     WAL journal mode is enabled on connect for better concurrent read
     throughput without complicating the single-writer model.
 
-    JSON blobs (outputs, paths, schema_info) are stored as TEXT and
+    JSON blobs (outputs, output) are stored as TEXT and
     serialised/deserialised in Python.  Timestamps are stored as ISO 8601
     TEXT and reconstructed as timezone-aware ``datetime.datetime`` objects.
     """
@@ -162,7 +165,8 @@ class SqliteMetastore(RunMetastore):
             VALUES (?, ?, 'running', ?, ?)
             ON CONFLICT (run_id) DO UPDATE
               SET status = 'running',
-                  updated_at = excluded.updated_at
+                  updated_at = excluded.updated_at,
+                  outputs = '{}'
             """,
             (run_id, pipeline_name, now, now),
         )
@@ -220,28 +224,26 @@ class SqliteMetastore(RunMetastore):
         step_name: str,
         attempt: int,
         duration_seconds: float,
-        paths: dict[str, Any],
-        schema_info: dict[str, Any],
+        output: dict[str, Any],
     ) -> None:
         self._execute(
             """
             INSERT INTO pipeline_steps
                 (run_id, step_name, status, attempt,
-                 duration_seconds, paths, schema_info, recorded_at)
-            VALUES (?, ?, 'success', ?, ?, ?, ?, ?)
+                 duration_seconds, output, recorded_at)
+            VALUES (?, ?, 'success', ?, ?, ?, ?)
             ON CONFLICT (run_id, step_name, attempt) DO UPDATE
               SET status = 'success',
                   duration_seconds = excluded.duration_seconds,
-                  paths = excluded.paths,
-                  schema_info = excluded.schema_info
+                  output = excluded.output,
+                  error = NULL
             """,
             (
                 run_id,
                 step_name,
                 attempt,
                 duration_seconds,
-                json.dumps(paths),
-                json.dumps(schema_info),
+                json.dumps(output),
                 _now_iso(),
             ),
         )
@@ -376,7 +378,6 @@ def _row_to_step_record(row: sqlite3.Row) -> StepRecord:
         attempt=row["attempt"],
         duration_seconds=row["duration_seconds"],
         error=row["error"],
-        paths=json.loads(row["paths"] or "{}"),
-        schema_info=json.loads(row["schema_info"] or "{}"),
+        output=json.loads(row["output"] or "{}"),
         recorded_at=datetime.datetime.fromisoformat(row["recorded_at"]),
     )

@@ -20,13 +20,13 @@ _CONDITION_OPS: dict[str, Any] = {
 
 def evaluate_condition(context: Any, condition: ConditionConfig) -> bool:
     """
-    Evaluate a step condition against the first record of an upstream step's output.
+    Evaluate a step condition against an upstream step's output dict.
 
     Returns True if the condition holds (step should run).
-    Raises ConditionEvaluationError if the record can't be read or compared.
+    Raises ConditionEvaluationError if the output can't be read or compared.
     """
     try:
-        record = context.read_first_record(condition.step)
+        record = context.get_output(condition.step)
     except (KeyError, ValueError) as exc:
         raise ConditionEvaluationError(
             f"Cannot read output from step '{condition.step}': {exc}"

@@ -1,9 +1,8 @@
 """
 RunMetastore — abstract interface for pipeline lifecycle metadata.
 
-The metastore tracks run and step status for querying purposes.
-It is additive: the JSONL state file continues to drive resume logic;
-the metastore is for history and cross-run queries.
+The metastore is the sole source of truth for step and run lifecycle state.
+It drives resume logic (via ``list_steps``) and serves cross-run history queries.
 """
 
 from __future__ import annotations
@@ -11,7 +10,21 @@ from __future__ import annotations
 import datetime
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from enum import Enum
+from typing import Any, ClassVar
+
+
+class MetastoreType(str, Enum):
+    NOOP = "noop"
+    SQLITE = "sqlite"
+    POSTGRES = "postgres"
+    COCKROACHDB = "cockroachdb"
+
+
+class MetastoreConfig:
+    """Marker base for all metastore configuration dataclasses."""
+
+    TYPE: ClassVar[MetastoreType]
 
 
 @dataclass(frozen=True)
@@ -33,8 +46,7 @@ class StepRecord:
     attempt: int
     duration_seconds: float | None
     error: str | None
-    paths: dict[str, Any]
-    schema_info: dict[str, Any]
+    output: dict[str, Any]
     recorded_at: datetime.datetime
 
 
@@ -64,7 +76,7 @@ class RunMetastore(ABC):
 
     @abstractmethod
     def record_run_success(self, run_id: str, outputs: dict[str, Any] | None = None) -> None:
-        """Update run status to 'success' and persist step outputs from context.metadata."""
+        """Update run status to 'success' and persist optional step outputs."""
 
     @abstractmethod
     def record_run_failed(self, run_id: str, error: str) -> None:
@@ -93,8 +105,7 @@ class RunMetastore(ABC):
         step_name: str,
         attempt: int,
         duration_seconds: float,
-        paths: dict[str, Any],
-        schema_info: dict[str, Any],
+        output: dict[str, Any],
     ) -> None:
         """Upsert step row for (run_id, step_name, attempt) with status='success'."""
 

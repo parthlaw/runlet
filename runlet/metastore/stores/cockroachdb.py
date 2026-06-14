@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
+from runlet.metastore.metastore import MetastoreType
 from runlet.metastore.stores.postgres import PostgresConfig, PostgresMetastore
 
 # CockroachDB DDL: identical to PostgreSQL except pipeline_steps uses
@@ -41,8 +42,7 @@ CREATE TABLE IF NOT EXISTS pipeline_steps (
     attempt          INT              NOT NULL DEFAULT 1,
     duration_seconds DOUBLE PRECISION,
     error            TEXT,
-    paths            JSONB            NOT NULL DEFAULT '{}',
-    schema_info      JSONB            NOT NULL DEFAULT '{}',
+    output           JSONB            NOT NULL DEFAULT '{}',
     recorded_at      TIMESTAMPTZ      NOT NULL DEFAULT now(),
     CONSTRAINT pipeline_steps_pkey          PRIMARY KEY (id),
     CONSTRAINT pipeline_steps_run_step_att  UNIQUE (run_id, step_name, attempt),
@@ -67,6 +67,8 @@ class CockroachDBConfig(PostgresConfig):
 
     Typical DSN: ``postgresql://user:pw@crdb-host:26257/pipeline_metastore``
     """
+
+    TYPE: ClassVar[MetastoreType] = MetastoreType.COCKROACHDB
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CockroachDBConfig:
