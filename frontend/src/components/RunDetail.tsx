@@ -11,26 +11,26 @@ import { StepDetail } from "./StepDetail";
 // ---------------------------------------------------------------------------
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
-  success: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />,
-  failed:  <XCircle      className="w-3.5 h-3.5 text-red-400" />,
-  running: <Loader2      className="w-3.5 h-3.5 text-amber-400 animate-spin" />,
-  skipped: <MinusCircle  className="w-3.5 h-3.5 text-gray-500" />,
-  pending: <Clock        className="w-3.5 h-3.5 text-gray-700" />,
+  success: <CheckCircle2 className="w-3.5 h-3.5 text-status-success" />,
+  failed:  <XCircle      className="w-3.5 h-3.5 text-status-failed" />,
+  running: <Loader2      className="w-3.5 h-3.5 text-status-running animate-spin" />,
+  skipped: <MinusCircle  className="w-3.5 h-3.5 text-content-ghost" />,
+  pending: <Clock        className="w-3.5 h-3.5 text-content-ghost/50" />,
 };
 
 const STATUS_DOT: Record<string, string> = {
-  success: "bg-emerald-500",
-  failed:  "bg-red-500",
-  running: "bg-amber-400",
-  skipped: "bg-gray-600",
-  pending: "bg-gray-800",
+  success: "bg-status-success",
+  failed:  "bg-status-failed",
+  running: "bg-status-running",
+  skipped: "bg-content-ghost",
+  pending: "bg-surface-high",
 };
 
 const RUN_STATUS_BADGE: Record<string, string> = {
-  success:   "bg-emerald-950/60 text-emerald-400 border-emerald-800/50",
-  failed:    "bg-red-950/60 text-red-400 border-red-800/50",
-  running:   "bg-amber-950/60 text-amber-400 border-amber-800/50",
-  cancelled: "bg-gray-900/60 text-gray-500 border-gray-700/50",
+  success:   "bg-emerald-950/60 text-emerald-400 border-emerald-900/50",
+  failed:    "bg-red-950/60 text-red-400 border-red-900/50",
+  running:   "bg-amber-950/60 text-amber-400 border-amber-900/50",
+  cancelled: "bg-surface-high text-content-ghost border-outline-strong",
 };
 
 // ---------------------------------------------------------------------------
@@ -53,11 +53,11 @@ export function RunDetail({ pipeline, runId }: Props) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col h-full">
-        <div className="px-4 py-3 border-b border-gray-800">
-          <div className="h-4 w-48 bg-gray-800 rounded animate-pulse" />
+      <div className="flex flex-col h-full bg-surface">
+        <div className="px-4 py-3 border-b border-outline-strong bg-surface-low">
+          <div className="h-4 w-48 bg-surface-high rounded animate-pulse" />
         </div>
-        <div className="flex-1 flex items-center justify-center text-gray-700 text-xs">
+        <div className="flex-1 flex items-center justify-center text-content-ghost text-xs font-mono">
           Loading run…
         </div>
       </div>
@@ -66,7 +66,7 @@ export function RunDetail({ pipeline, runId }: Props) {
 
   if (isError || !data) {
     return (
-      <div className="flex-1 flex items-center justify-center text-red-400 text-xs">
+      <div className="flex-1 flex items-center justify-center text-red-400 text-xs font-mono">
         Failed to load run.
       </div>
     );
@@ -80,21 +80,31 @@ export function RunDetail({ pipeline, runId }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden bg-surface">
       {/* Run header */}
-      <div className="px-4 py-2.5 border-b border-gray-800 bg-gray-900/40 flex items-center gap-3 shrink-0">
-        <span className="font-mono text-xs text-gray-500 truncate">{run.run_id}</span>
-        <span
-          className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
-            RUN_STATUS_BADGE[run.status] ?? "bg-gray-900 text-gray-400 border-gray-800"
-          }`}
-        >
-          {run.status}
-        </span>
-        {run.error && (
-          <span className="text-red-400 text-xs truncate max-w-xs" title={run.error}>
-            {run.error}
+      <div className="shrink-0 border-b border-outline-strong bg-surface-low">
+        <div className="px-4 py-2.5 flex items-center gap-3">
+          <span className="font-mono text-[11px] text-content-muted truncate flex-1">{run.run_id}</span>
+          <span className="text-[10px] text-content-ghost font-mono shrink-0">
+            {new Date(run.created_at).toLocaleString(undefined, {
+              month: "short", day: "numeric",
+              hour: "2-digit", minute: "2-digit",
+            })}
           </span>
+          <span
+            className={`shrink-0 text-[10px] font-semibold px-2 py-px rounded border ${
+              RUN_STATUS_BADGE[run.status] ?? "bg-surface-high text-content-ghost border-outline-strong"
+            }`}
+          >
+            {run.status}
+          </span>
+        </div>
+
+        {/* Error banner — full width below header */}
+        {run.error && (
+          <div className="px-4 py-2 border-t border-red-900/40 bg-red-950/20">
+            <p className="text-red-300 font-mono text-xs leading-relaxed">{run.error}</p>
+          </div>
         )}
       </div>
 
@@ -111,21 +121,25 @@ export function RunDetail({ pipeline, runId }: Props) {
       {/* Step list + detail panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Step sidebar */}
-        <div className="w-44 shrink-0 border-r border-gray-800 overflow-y-auto bg-gray-900/20">
+        <div className="w-44 shrink-0 border-r border-outline-strong overflow-y-auto bg-surface-low">
           {steps.map((s) => (
             <button
               key={s.step_name}
               onClick={() => handleSelectStep(s.step_name)}
-              className={`w-full text-left px-3 py-2.5 border-b border-gray-900/60 flex items-center gap-2 transition-all ${
+              className={`w-full text-left px-3 py-2.5 border-b border-outline-strong/30 flex items-center gap-2 transition-all duration-150 border-l-2 ${
                 selectedStep === s.step_name
-                  ? "bg-indigo-950/30 border-l-2 border-l-indigo-500"
-                  : "hover:bg-gray-800/40"
+                  ? "bg-surface-high border-l-primary"
+                  : "hover:bg-surface-mid border-l-transparent"
               }`}
             >
-              <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${STATUS_DOT[s.status] ?? "bg-gray-700"}`} />
-              <span className="truncate text-xs font-mono text-gray-300">{s.step_name}</span>
+              <span
+                className={`shrink-0 w-1.5 h-1.5 rounded-full ${STATUS_DOT[s.status] ?? "bg-content-ghost"} ${
+                  s.status === "running" ? "status-pulse" : ""
+                }`}
+              />
+              <span className="truncate text-xs font-mono text-content-dim flex-1">{s.step_name}</span>
               {s.duration_seconds != null && (
-                <span className="ml-auto text-gray-600 text-[10px] shrink-0 font-mono">
+                <span className="ml-auto text-content-ghost text-[10px] shrink-0 font-mono">
                   {s.duration_seconds.toFixed(1)}s
                 </span>
               )}
@@ -154,10 +168,10 @@ export function RunDetail({ pipeline, runId }: Props) {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-gray-700"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-2"
               >
-                <MousePointerClick className="w-6 h-6 opacity-40" />
-                <span className="text-xs">Click a step to inspect it</span>
+                <MousePointerClick className="w-6 h-6 text-content-ghost opacity-30" />
+                <span className="text-xs text-content-ghost">Click a step to inspect it</span>
               </motion.div>
             )}
           </AnimatePresence>
