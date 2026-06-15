@@ -11,8 +11,9 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from runlet.artifact_store import ArtifactStore, build_store
@@ -80,6 +81,14 @@ def build_app(
 
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists() and any(static_dir.iterdir()):
+        index_html = static_dir / "index.html"
+
+        @app.get("/", include_in_schema=False)
+        async def serve_index(request: Request) -> Response:
+            resp = FileResponse(index_html, media_type="text/html")
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return resp
+
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
     return app

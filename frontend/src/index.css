@@ -4,19 +4,15 @@
 
 @layer base {
   body {
-    background-color: #13131b;
-    color: #e4e1ed;
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
-    font-size: 13px;
-    line-height: 20px;
+    @apply bg-background text-on-surface font-body-base text-body-sm overflow-hidden;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
   }
-}
 
-/* ================================================================
-   Stitch Design System — Animations
-   ================================================================ */
+  ::selection {
+    @apply bg-primary-container text-on-primary-container;
+  }
+}
 
 /* Running badge/dot: opacity 1.0 → 0.4 pulse */
 @keyframes subtle-pulse {
@@ -26,51 +22,51 @@
 
 /* Live status update flash (300ms background) */
 @keyframes status-flash {
-  0%   { background-color: rgba(99, 102, 241, 0.15); }
+  0%   { background-color: rgba(192, 193, 255, 0.15); }
   100% { background-color: transparent; }
 }
 
-/* DAG node glow — running state (20px blur, 10% amber) */
+/* DAG node glow — running state */
 @keyframes glow-running {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5),
-                0 0 12px rgba(245, 158, 11, 0.1);
+    box-shadow: 0 0 0 0 rgba(217, 119, 33, 0.5),
+                0 0 12px rgba(217, 119, 33, 0.1);
   }
   50% {
-    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0),
-                0 0 20px rgba(245, 158, 11, 0.25);
+    box-shadow: 0 0 0 5px rgba(217, 119, 33, 0),
+                0 0 20px rgba(217, 119, 33, 0.25);
   }
 }
 
 /* DAG node glow — failed state */
 @keyframes glow-failed {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  50%       { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 180, 171, 0.4); }
+  50%       { box-shadow: 0 0 0 5px rgba(255, 180, 171, 0); }
 }
 
-/* Panel slide-in — 200ms per design system */
-@keyframes slide-in {
-  from { opacity: 0; transform: translateX(12px); }
-  to   { opacity: 1; transform: translateX(0); }
+@keyframes dag-dash {
+  to { stroke-dashoffset: 0; }
 }
 
 .step-node-running { animation: glow-running 1.5s ease-in-out infinite; }
 .step-node-failed  { animation: glow-failed 0.9s ease-in-out infinite; }
-.status-pulse      { animation: subtle-pulse 2s ease-in-out infinite; }
+.status-pulse      { animation: subtle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 .status-flash      { animation: status-flash 0.3s ease-in-out; }
 
-/* ================================================================
-   React Flow overrides
-   ================================================================ */
+.dag-outline-path {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: dag-dash 5s linear forwards;
+}
 
+/* React Flow overrides */
 .react-flow__node { cursor: pointer !important; }
-
-.react-flow__background { background: #13131b !important; }
+.react-flow__background { background: #000000 !important; }
 
 .react-flow__controls {
   background: #1b1b23 !important;
   border: 1px solid #464554 !important;
-  border-radius: 6px !important;
+  border-radius: 4px !important;
   overflow: hidden;
   box-shadow: none !important;
 }
@@ -90,22 +86,16 @@
   height: 12px !important;
 }
 
-/* ================================================================
-   react-json-view-lite dark overrides
-   ================================================================ */
-
+/* react-json-view-lite dark overrides */
 .rjv-container,
 [class^="rjv-"] {
   background: transparent !important;
   font-family: "JetBrains Mono", ui-monospace, monospace !important;
-  font-size: 12px !important;
-  line-height: 18px !important;
+  font-size: 11px !important;
+  line-height: 16px !important;
 }
 
-/* ================================================================
-   Custom scrollbar (thin, dark)
-   ================================================================ */
-
+/* Custom scrollbar */
 * {
   scrollbar-width: thin;
   scrollbar-color: #464554 transparent;
@@ -117,6 +107,6 @@
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
   background-color: #464554;
-  border-radius: 9999px;
+  border-radius: 10px;
 }
 *::-webkit-scrollbar-thumb:hover { background-color: #908fa0; }

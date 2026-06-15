@@ -23,7 +23,7 @@ export function JSONViewer({ runId, stepName, fileKey }: FileViewerProps) {
         {[...Array(6)].map((_, i) => (
           <div
             key={i}
-            className="h-3 bg-surface-high rounded animate-pulse"
+            className="h-3 bg-surface-container-high rounded animate-pulse"
             style={{ width: `${60 + i * 5}%` }}
           />
         ))}
@@ -32,7 +32,7 @@ export function JSONViewer({ runId, stepName, fileKey }: FileViewerProps) {
   }
 
   if (isError) {
-    return <p className="px-4 py-3 text-red-400 text-xs font-mono">Failed to load file.</p>;
+    return <p className="px-4 py-3 text-error text-xs font-mono">Failed to load file.</p>;
   }
 
   return (
