@@ -66,18 +66,18 @@ export function CSVViewer({ runId, stepName, fileKey, sizeBytes }: FileViewerPro
     return (
       <div className="p-4 space-y-2 bg-[#0d0d15]">
         {[...Array(8)].map((_, i) => (
-          <div key={i} className="h-7 bg-surface-high rounded animate-pulse" />
+          <div key={i} className="h-7 bg-surface-container-high rounded animate-pulse" />
         ))}
       </div>
     );
   }
 
   if (isError) {
-    return <p className="px-4 py-3 text-red-400 text-xs font-mono">Failed to load file.</p>;
+    return <p className="px-4 py-3 text-error text-xs font-mono">Failed to load file.</p>;
   }
 
   if (!parsed || parsed.headers.length === 0) {
-    return <p className="px-4 py-3 text-content-ghost text-xs font-mono">Empty file.</p>;
+    return <p className="px-4 py-3 text-on-surface-variant text-xs font-mono">Empty file.</p>;
   }
 
   const totalRows = parsed.rows.length;
@@ -87,7 +87,7 @@ export function CSVViewer({ runId, stepName, fileKey, sizeBytes }: FileViewerPro
   return (
     <div className="flex flex-col h-full min-h-0 bg-[#0d0d15]">
       {/* Info bar */}
-      <div className="px-3 py-2 border-b border-outline-strong/40 text-[11px] font-mono text-content-ghost shrink-0">
+      <div className="px-3 py-2 border-b border-outline-variant/40 text-[11px] font-mono text-on-surface-variant shrink-0">
         {totalRows.toLocaleString()} rows · {totalCols} columns{fileSizeStr}
       </div>
 
@@ -99,7 +99,7 @@ export function CSVViewer({ runId, stepName, fileKey, sizeBytes }: FileViewerPro
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-3 py-2 text-left text-content-dim font-semibold border-b border-r border-outline-strong/40 whitespace-nowrap bg-surface-high"
+                    className="px-3 py-2 text-left text-on-surface-variant font-semibold border-b border-r border-outline-variant/40 whitespace-nowrap bg-surface-container-high"
                     style={{ minWidth: 100 }}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
@@ -116,14 +116,14 @@ export function CSVViewer({ runId, stepName, fileKey, sizeBytes }: FileViewerPro
                 <tr
                   key={row.id}
                   style={{ position: "absolute", top: item.start, width: "100%", display: "flex" }}
-                  className={`border-b border-outline-strong/20 hover:bg-surface-high transition-colors ${
-                    isEven ? "bg-surface-mid" : "bg-surface-low"
+                  className={`border-b border-outline-variant/20 hover:bg-surface-container-high transition-colors ${
+                    isEven ? "bg-surface-container" : "bg-surface-container-low"
                   }`}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className="px-3 py-1 text-content-dim border-r border-outline-strong/20 shrink-0 truncate"
+                      className="px-3 py-1 text-on-surface-variant border-r border-outline-variant/20 shrink-0 truncate"
                       style={{ minWidth: 100, flex: "1 0 100px" }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

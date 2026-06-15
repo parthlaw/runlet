@@ -21,7 +21,7 @@ export function TextViewer({ runId, stepName, fileKey }: FileViewerProps) {
         {[...Array(5)].map((_, i) => (
           <div
             key={i}
-            className="h-3 bg-surface-high rounded animate-pulse"
+            className="h-3 bg-surface-container-high rounded animate-pulse"
             style={{ width: `${50 + i * 10}%` }}
           />
         ))}
@@ -30,12 +30,12 @@ export function TextViewer({ runId, stepName, fileKey }: FileViewerProps) {
   }
 
   if (isError) {
-    return <p className="px-4 py-3 text-red-400 text-xs font-mono">Failed to load file.</p>;
+    return <p className="px-4 py-3 text-error text-xs font-mono">Failed to load file.</p>;
   }
 
   return (
     <div className="h-full overflow-auto p-3 bg-[#0d0d15]">
-      <pre className="text-xs font-mono text-content-dim whitespace-pre-wrap break-words leading-relaxed">
+      <pre className="text-xs font-mono text-on-surface-variant whitespace-pre-wrap break-words leading-relaxed">
         {text}
       </pre>
     </div>

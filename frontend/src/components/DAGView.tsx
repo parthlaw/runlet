@@ -11,52 +11,47 @@ import "reactflow/dist/style.css";
 import { CheckCircle2, XCircle, Loader2, MinusCircle, Clock } from "lucide-react";
 import type { Pipeline, StepRecord } from "../api";
 
-// ---------------------------------------------------------------------------
-// Status palette
-// ---------------------------------------------------------------------------
-
 type Status = "success" | "failed" | "running" | "skipped" | "pending";
 
 const STATUS_COLOR: Record<string, string> = {
   success: "#10b981",
-  failed:  "#ef4444",
-  running: "#f59e0b",
-  skipped: "#4b5563",
-  pending: "#292932",
+  failed: "#ffb4ab",
+  running: "#d97721",
+  skipped: "#908fa0",
+  pending: "#464554",
 };
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
-  success: <CheckCircle2 className="w-3 h-3 text-status-success shrink-0" />,
-  failed:  <XCircle      className="w-3 h-3 text-status-failed shrink-0" />,
-  running: <Loader2      className="w-3 h-3 text-status-running shrink-0 animate-spin" />,
-  skipped: <MinusCircle  className="w-3 h-3 text-content-ghost shrink-0" />,
-  pending: <Clock        className="w-3 h-3 text-surface-highest shrink-0" />,
+  success: <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />,
+  failed: <XCircle className="w-3 h-3 text-error shrink-0" />,
+  running: <Loader2 className="w-3 h-3 text-tertiary-container shrink-0 animate-spin" />,
+  skipped: <MinusCircle className="w-3 h-3 text-outline shrink-0" />,
+  pending: <Clock className="w-3 h-3 text-outline shrink-0" />,
 };
 
 const STATUS_TEXT: Record<string, string> = {
-  success: "text-status-success",
-  failed:  "text-status-failed",
-  running: "text-status-running",
-  skipped: "text-content-ghost",
-  pending: "text-surface-highest",
+  success: "text-emerald-400",
+  failed: "text-error",
+  running: "text-tertiary-container",
+  skipped: "text-on-surface-variant",
+  pending: "text-on-surface-variant",
 };
 
-// ---------------------------------------------------------------------------
-// Custom node — left-side color strip design
-// ---------------------------------------------------------------------------
-
 function StepNode({ data }: NodeProps) {
-  const { label, status, duration, selected: isSelected } = data as {
+  const { label, status, duration, selected: isSelected, compact } = data as {
     label: string;
     status: Status;
     duration: number | null;
     selected: boolean;
+    compact?: boolean;
   };
 
   const stripColor = STATUS_COLOR[status] ?? STATUS_COLOR.pending;
   const animClass =
     status === "running" ? "step-node-running" :
-    status === "failed"  ? "step-node-failed"  : "";
+    status === "failed" ? "step-node-failed" : "";
+
+  const width = compact ? 140 : 186;
 
   return (
     <>
@@ -64,39 +59,34 @@ function StepNode({ data }: NodeProps) {
       <div
         className={`relative flex items-stretch overflow-hidden select-none ${animClass}`}
         style={{
-          width: 186,
-          background: "#1b1b23",
-          border: isSelected
-            ? "1px solid #6366f1"
-            : "1px solid #464554",
-          borderRadius: 4,
-          boxShadow: isSelected ? "0 0 0 3px rgba(99,102,241,0.2)" : undefined,
-          transition: "border-color 0.15s, box-shadow 0.15s",
+          width,
+          background: compact ? "#13131b" : "#13131b",
+          border: isSelected ? "1px solid #c0c1ff" : "1px solid #464554",
+          borderRadius: 2,
+          boxShadow: isSelected ? "0 0 0 3px rgba(192,193,255,0.2)" : undefined,
+          transition: "border-color 0.2s, box-shadow 0.2s",
         }}
       >
-        {/* Left color strip */}
         <div
           style={{
             width: 4,
             flexShrink: 0,
-            background: isSelected ? "#6366f1" : stripColor,
-            transition: "background 0.15s",
+            background: isSelected ? "#c0c1ff" : stripColor,
+            transition: "background 0.2s",
           }}
         />
-
-        {/* Content */}
-        <div className="flex flex-col gap-1 px-2.5 py-2 flex-1 min-w-0">
+        <div className="flex flex-col gap-1 px-2 py-1.5 flex-1 min-w-0">
           <span
-            className="font-mono text-xs font-semibold text-content truncate leading-tight"
+            className="font-code-sm text-code-sm font-semibold text-on-surface truncate leading-tight"
             title={label}
           >
             {label}
           </span>
           <div className="flex items-center gap-1.5">
             {STATUS_ICON[status]}
-            <span className={`font-mono text-[10px] ${STATUS_TEXT[status]}`}>{status}</span>
+            <span className={`font-code-sm text-code-sm ${STATUS_TEXT[status]}`}>{status}</span>
             {duration != null && (
-              <span className="ml-auto font-mono text-[10px] text-content-ghost shrink-0">
+              <span className="ml-auto font-code-sm text-code-sm text-on-surface-variant shrink-0">
                 {duration.toFixed(1)}s
               </span>
             )}
@@ -110,11 +100,8 @@ function StepNode({ data }: NodeProps) {
 
 const nodeTypes = { step: StepNode };
 
-// ---------------------------------------------------------------------------
-// Layout
-// ---------------------------------------------------------------------------
-
-const NODE_W = 186;
+const NODE_W_FULL = 186;
+const NODE_W_COMPACT = 140;
 const NODE_H = 56;
 const COL_GAP = 72;
 const ROW_GAP = 20;
@@ -123,8 +110,10 @@ function buildLayout(
   pipeline: Pipeline,
   statusMap: Record<string, string>,
   durationMap: Record<string, number | null>,
-  selectedStep: string | null
+  selectedStep: string | null,
+  compact: boolean
 ): { nodes: Node[]; edges: Edge[] } {
+  const nodeW = compact ? NODE_W_COMPACT : NODE_W_FULL;
   const layers: Record<number, string[]> = {};
   pipeline.nodes.forEach((n) => {
     (layers[n.execution_order] = layers[n.execution_order] ?? []).push(n.id);
@@ -132,10 +121,10 @@ function buildLayout(
 
   const posMap: Record<string, { x: number; y: number }> = {};
   Object.entries(layers).forEach(([col, ids]) => {
-    const x = Number(col) * (NODE_W + COL_GAP);
+    const x = Number(col) * (nodeW + (compact ? 40 : COL_GAP));
     const totalH = ids.length * NODE_H + (ids.length - 1) * ROW_GAP;
     ids.forEach((id, row) => {
-      posMap[id] = { x, y: row * (NODE_H + ROW_GAP) - totalH / 2 + 100 };
+      posMap[id] = { x, y: row * (NODE_H + ROW_GAP) - totalH / 2 + (compact ? 60 : 100) };
     });
   });
 
@@ -150,6 +139,7 @@ function buildLayout(
         status,
         duration: durationMap[n.id] ?? null,
         selected: selectedStep === n.id,
+        compact,
       },
     };
   });
@@ -174,18 +164,15 @@ function buildLayout(
   return { nodes, edges };
 }
 
-// ---------------------------------------------------------------------------
-// DAGView
-// ---------------------------------------------------------------------------
-
 interface Props {
   pipeline: Pipeline;
   steps: StepRecord[];
   selectedStep: string | null;
   onSelectStep: (name: string) => void;
+  compact?: boolean;
 }
 
-export function DAGView({ pipeline, steps, selectedStep, onSelectStep }: Props) {
+export function DAGView({ pipeline, steps, selectedStep, onSelectStep, compact = false }: Props) {
   const statusMap: Record<string, string> = {};
   const durationMap: Record<string, number | null> = {};
   steps.forEach((s) => {
@@ -193,27 +180,42 @@ export function DAGView({ pipeline, steps, selectedStep, onSelectStep }: Props) 
     durationMap[s.step_name] = s.duration_seconds;
   });
 
-  const { nodes, edges } = buildLayout(pipeline, statusMap, durationMap, selectedStep);
+  const { nodes, edges } = buildLayout(
+    pipeline,
+    statusMap,
+    durationMap,
+    selectedStep,
+    compact
+  );
+
+  const height = compact ? 200 : 280;
 
   return (
-    <div style={{ height: 280 }} className="border-b border-outline-strong">
+    <div
+      style={{ height }}
+      className={
+        compact
+          ? "relative w-full aspect-video bg-black rounded-xl border border-outline-variant overflow-hidden"
+          : "border-b border-outline-variant"
+      }
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodeClick={(_, node) => onSelectStep(node.id)}
         fitView
-        fitViewOptions={{ padding: 0.25 }}
+        fitViewOptions={{ padding: compact ? 0.15 : 0.25 }}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
         panOnScroll
         zoomOnScroll={false}
-        minZoom={0.3}
+        minZoom={0.2}
         maxZoom={2}
       >
-        <Background color="#1f1f27" gap={20} size={1} />
-        <Controls showInteractive={false} />
+        <Background color={compact ? "#000000" : "#1f1f27"} gap={20} size={1} />
+        {!compact && <Controls showInteractive={false} />}
       </ReactFlow>
     </div>
   );

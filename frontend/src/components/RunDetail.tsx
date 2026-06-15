@@ -1,50 +1,17 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, XCircle, Loader2, MinusCircle, Clock, MousePointerClick } from "lucide-react";
+import { Activity, Info, X } from "lucide-react";
 import { api, type Pipeline, type RunDetail } from "../api";
 import { DAGView } from "./DAGView";
-import { StepDetail } from "./StepDetail";
-
-// ---------------------------------------------------------------------------
-// Status helpers
-// ---------------------------------------------------------------------------
-
-const STATUS_ICON: Record<string, React.ReactNode> = {
-  success: <CheckCircle2 className="w-3.5 h-3.5 text-status-success" />,
-  failed:  <XCircle      className="w-3.5 h-3.5 text-status-failed" />,
-  running: <Loader2      className="w-3.5 h-3.5 text-status-running animate-spin" />,
-  skipped: <MinusCircle  className="w-3.5 h-3.5 text-content-ghost" />,
-  pending: <Clock        className="w-3.5 h-3.5 text-content-ghost/50" />,
-};
-
-const STATUS_DOT: Record<string, string> = {
-  success: "bg-status-success",
-  failed:  "bg-status-failed",
-  running: "bg-status-running",
-  skipped: "bg-content-ghost",
-  pending: "bg-surface-high",
-};
-
-const RUN_STATUS_BADGE: Record<string, string> = {
-  success:   "bg-emerald-950/60 text-emerald-400 border-emerald-900/50",
-  failed:    "bg-red-950/60 text-red-400 border-red-900/50",
-  running:   "bg-amber-950/60 text-amber-400 border-amber-900/50",
-  cancelled: "bg-surface-high text-content-ghost border-outline-strong",
-};
-
-// ---------------------------------------------------------------------------
-// RunDetail
-// ---------------------------------------------------------------------------
+import { StepExecutionTree } from "./StepExecutionTree";
 
 interface Props {
   pipeline: Pipeline;
   runId: string;
+  onClose: () => void;
+  onSelectStep: (stepName: string) => void;
 }
 
-export function RunDetail({ pipeline, runId }: Props) {
-  const [selectedStep, setSelectedStep] = useState<string | null>(null);
-
+export function RunDetail({ pipeline, runId, onClose, onSelectStep }: Props) {
   const { data, isLoading, isError } = useQuery<RunDetail>({
     queryKey: ["run", runId],
     queryFn: () => api.run(runId),
@@ -53,130 +20,89 @@ export function RunDetail({ pipeline, runId }: Props) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col h-full bg-surface">
-        <div className="px-4 py-3 border-b border-outline-strong bg-surface-low">
-          <div className="h-4 w-48 bg-surface-high rounded animate-pulse" />
+      <aside className="fixed top-14 bottom-0 right-0 w-[400px] z-40 bg-surface-container-low border-l border-outline-variant flex flex-col">
+        <div className="p-4 border-b border-outline-variant">
+          <div className="h-5 w-32 bg-surface-container-high rounded animate-pulse" />
         </div>
-        <div className="flex-1 flex items-center justify-center text-content-ghost text-xs font-mono">
+        <div className="flex-1 flex items-center justify-center text-on-surface-variant font-code-sm text-code-sm">
           Loading run…
         </div>
-      </div>
+      </aside>
     );
   }
 
   if (isError || !data) {
     return (
-      <div className="flex-1 flex items-center justify-center text-red-400 text-xs font-mono">
-        Failed to load run.
-      </div>
+      <aside className="fixed top-14 bottom-0 right-0 w-[400px] z-40 bg-surface-container-low border-l border-outline-variant flex items-center justify-center">
+        <p className="text-error font-code-sm text-code-sm">Failed to load run.</p>
+      </aside>
     );
   }
 
   const { run, steps } = data;
-  const activeStepRecord = steps.find((s) => s.step_name === selectedStep);
-
-  function handleSelectStep(name: string) {
-    setSelectedStep((prev) => (prev === name ? null : name));
-  }
+  const isLive = run.status === "running";
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-surface">
-      {/* Run header */}
-      <div className="shrink-0 border-b border-outline-strong bg-surface-low">
-        <div className="px-4 py-2.5 flex items-center gap-3">
-          <span className="font-mono text-[11px] text-content-muted truncate flex-1">{run.run_id}</span>
-          <span className="text-[10px] text-content-ghost font-mono shrink-0">
-            {new Date(run.created_at).toLocaleString(undefined, {
-              month: "short", day: "numeric",
-              hour: "2-digit", minute: "2-digit",
-            })}
-          </span>
-          <span
-            className={`shrink-0 text-[10px] font-semibold px-2 py-px rounded border ${
-              RUN_STATUS_BADGE[run.status] ?? "bg-surface-high text-content-ghost border-outline-strong"
-            }`}
+    <aside className="fixed top-14 bottom-0 right-0 w-[400px] z-40 bg-surface-container-low border-l border-outline-variant flex flex-col">
+      <div className="p-4 border-b border-outline-variant flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2">
+          <Info className="w-5 h-5 text-primary" />
+          <h2 className="font-headline-md text-[16px] font-bold text-on-surface">Run Detail</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {isLive && (
+            <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-500 status-pulse" />
+              <span className="font-label-caps text-[10px] text-amber-500 tracking-wider">LIVE</span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 hover:bg-surface-variant rounded transition-colors duration-200"
+            aria-label="Close run detail"
           >
-            {run.status}
-          </span>
+            <X className="w-5 h-5 text-on-surface-variant" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <div className="bg-surface-container-high/50 p-4">
+          <p className="text-on-surface-variant font-label-caps text-[10px] mb-1">RUN UUID</p>
+          <p className="font-code-base text-code-base text-primary font-bold break-all">
+            {run.run_id}
+          </p>
         </div>
 
-        {/* Error banner — full width below header */}
         {run.error && (
-          <div className="px-4 py-2 border-t border-red-900/40 bg-red-950/20">
-            <p className="text-red-300 font-mono text-xs leading-relaxed">{run.error}</p>
+          <div className="mx-4 mt-4 px-3 py-2 border border-error/30 bg-error/10 rounded">
+            <p className="font-code-sm text-code-sm text-error leading-relaxed">{run.error}</p>
           </div>
         )}
-      </div>
 
-      {/* DAG visualization */}
-      <div className="shrink-0">
-        <DAGView
-          pipeline={pipeline}
-          steps={steps}
-          selectedStep={selectedStep}
-          onSelectStep={handleSelectStep}
-        />
-      </div>
-
-      {/* Step list + detail panel */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Step sidebar */}
-        <div className="w-44 shrink-0 border-r border-outline-strong overflow-y-auto bg-surface-low">
-          {steps.map((s) => (
-            <button
-              key={s.step_name}
-              onClick={() => handleSelectStep(s.step_name)}
-              className={`w-full text-left px-3 py-2.5 border-b border-outline-strong/30 flex items-center gap-2 transition-all duration-150 border-l-2 ${
-                selectedStep === s.step_name
-                  ? "bg-surface-high border-l-primary"
-                  : "hover:bg-surface-mid border-l-transparent"
-              }`}
-            >
-              <span
-                className={`shrink-0 w-1.5 h-1.5 rounded-full ${STATUS_DOT[s.status] ?? "bg-content-ghost"} ${
-                  s.status === "running" ? "status-pulse" : ""
-                }`}
-              />
-              <span className="truncate text-xs font-mono text-content-dim flex-1">{s.step_name}</span>
-              {s.duration_seconds != null && (
-                <span className="ml-auto text-content-ghost text-[10px] shrink-0 font-mono">
-                  {s.duration_seconds.toFixed(1)}s
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="px-4 mb-8 mt-4">
+          <h3 className="font-label-caps text-label-caps text-on-surface-variant mb-4">
+            DAG VISUALIZATION
+          </h3>
+          <DAGView
+            pipeline={pipeline}
+            steps={steps}
+            selectedStep={null}
+            onSelectStep={onSelectStep}
+            compact
+          />
         </div>
 
-        {/* Step detail / empty state */}
-        <div className="flex-1 overflow-hidden relative">
-          <AnimatePresence mode="wait">
-            {activeStepRecord ? (
-              <motion.div
-                key={activeStepRecord.step_name}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 overflow-y-auto"
-              >
-                <StepDetail runId={runId} stepRecord={activeStepRecord} />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 flex flex-col items-center justify-center gap-2"
-              >
-                <MousePointerClick className="w-6 h-6 text-content-ghost opacity-30" />
-                <span className="text-xs text-content-ghost">Click a step to inspect it</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        <StepExecutionTree steps={steps} onSelectStep={onSelectStep} />
       </div>
-    </div>
+
+      <div className="p-4 border-t border-outline-variant bg-surface-container flex items-center gap-2 shrink-0">
+        <Activity className="w-4 h-4 text-emerald-400" />
+        <span className="text-body-sm text-on-surface-variant">
+          {steps.filter((s) => s.status === "success").length}/{steps.length} steps complete
+        </span>
+      </div>
+    </aside>
   );
 }
