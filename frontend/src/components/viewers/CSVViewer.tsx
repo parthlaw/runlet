@@ -64,20 +64,20 @@ export function CSVViewer({ runId, stepName, fileKey, sizeBytes }: FileViewerPro
 
   if (isLoading) {
     return (
-      <div className="p-4 space-y-2">
+      <div className="p-4 space-y-2 bg-[#0d0d15]">
         {[...Array(8)].map((_, i) => (
-          <div key={i} className="h-7 bg-gray-800 rounded animate-pulse" />
+          <div key={i} className="h-7 bg-surface-high rounded animate-pulse" />
         ))}
       </div>
     );
   }
 
   if (isError) {
-    return <p className="px-4 py-3 text-red-400 text-xs">Failed to load file.</p>;
+    return <p className="px-4 py-3 text-red-400 text-xs font-mono">Failed to load file.</p>;
   }
 
   if (!parsed || parsed.headers.length === 0) {
-    return <p className="px-4 py-3 text-gray-500 text-xs">Empty file.</p>;
+    return <p className="px-4 py-3 text-content-ghost text-xs font-mono">Empty file.</p>;
   }
 
   const totalRows = parsed.rows.length;
@@ -85,20 +85,21 @@ export function CSVViewer({ runId, stepName, fileKey, sizeBytes }: FileViewerPro
   const fileSizeStr = sizeBytes != null ? ` · ${(sizeBytes / 1024).toFixed(1)} KB` : "";
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="px-3 py-2 border-b border-gray-800 text-xs text-gray-500 shrink-0">
+    <div className="flex flex-col h-full min-h-0 bg-[#0d0d15]">
+      {/* Info bar */}
+      <div className="px-3 py-2 border-b border-outline-strong/40 text-[11px] font-mono text-content-ghost shrink-0">
         {totalRows.toLocaleString()} rows · {totalCols} columns{fileSizeStr}
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto" ref={parentRef}>
         <table className="text-xs font-mono border-collapse" style={{ minWidth: "100%" }}>
-          <thead className="sticky top-0 z-10 bg-gray-900">
+          <thead className="sticky top-0 z-10">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-3 py-2 text-left text-gray-400 font-medium border-b border-r border-gray-800 whitespace-nowrap bg-gray-900"
+                    className="px-3 py-2 text-left text-content-dim font-semibold border-b border-r border-outline-strong/40 whitespace-nowrap bg-surface-high"
                     style={{ minWidth: 100 }}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
@@ -110,16 +111,19 @@ export function CSVViewer({ runId, stepName, fileKey, sizeBytes }: FileViewerPro
           <tbody style={{ position: "relative", height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((item) => {
               const row = rows[item.index];
+              const isEven = item.index % 2 === 0;
               return (
                 <tr
                   key={row.id}
                   style={{ position: "absolute", top: item.start, width: "100%", display: "flex" }}
-                  className="border-b border-gray-900/60 hover:bg-gray-800/40 transition-colors"
+                  className={`border-b border-outline-strong/20 hover:bg-surface-high transition-colors ${
+                    isEven ? "bg-surface-mid" : "bg-surface-low"
+                  }`}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className="px-3 py-1 text-gray-300 border-r border-gray-900/60 shrink-0 truncate"
+                      className="px-3 py-1 text-content-dim border-r border-outline-strong/20 shrink-0 truncate"
                       style={{ minWidth: 100, flex: "1 0 100px" }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

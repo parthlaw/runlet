@@ -21,14 +21,18 @@ export function JSONViewer({ runId, stepName, fileKey }: FileViewerProps) {
     return (
       <div className="p-4 space-y-2">
         {[...Array(6)].map((_, i) => (
-          <div key={i} className="h-3 bg-gray-800 rounded animate-pulse" style={{ width: `${60 + i * 5}%` }} />
+          <div
+            key={i}
+            className="h-3 bg-surface-high rounded animate-pulse"
+            style={{ width: `${60 + i * 5}%` }}
+          />
         ))}
       </div>
     );
   }
 
   if (isError) {
-    return <p className="px-4 py-3 text-red-400 text-xs">Failed to load file.</p>;
+    return <p className="px-4 py-3 text-red-400 text-xs font-mono">Failed to load file.</p>;
   }
 
   return (

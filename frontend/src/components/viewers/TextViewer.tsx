@@ -17,21 +17,27 @@ export function TextViewer({ runId, stepName, fileKey }: FileViewerProps) {
 
   if (isLoading) {
     return (
-      <div className="p-4 space-y-2">
+      <div className="p-4 space-y-2 bg-[#0d0d15]">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-3 bg-gray-800 rounded animate-pulse" style={{ width: `${50 + i * 10}%` }} />
+          <div
+            key={i}
+            className="h-3 bg-surface-high rounded animate-pulse"
+            style={{ width: `${50 + i * 10}%` }}
+          />
         ))}
       </div>
     );
   }
 
   if (isError) {
-    return <p className="px-4 py-3 text-red-400 text-xs">Failed to load file.</p>;
+    return <p className="px-4 py-3 text-red-400 text-xs font-mono">Failed to load file.</p>;
   }
 
   return (
-    <div className="h-full overflow-auto p-3">
-      <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words">{text}</pre>
+    <div className="h-full overflow-auto p-3 bg-[#0d0d15]">
+      <pre className="text-xs font-mono text-content-dim whitespace-pre-wrap break-words leading-relaxed">
+        {text}
+      </pre>
     </div>
   );
 }

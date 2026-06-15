@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Workflow } from "lucide-react";
+import { GitBranch } from "lucide-react";
 import { api, Pipeline } from "../api";
 
 interface Props {
@@ -14,35 +14,44 @@ export function PipelineList({ selected, onSelect }: Props) {
   });
 
   return (
-    <aside className="w-52 shrink-0 border-r border-gray-800 flex flex-col bg-gray-900/30">
-      <div className="px-4 py-3.5 border-b border-gray-800 flex items-center gap-2 shrink-0">
-        <Workflow className="w-3.5 h-3.5 text-indigo-400" />
-        <span className="text-[10px] uppercase tracking-widest text-gray-500 font-medium">
+    <aside className="w-60 shrink-0 border-r border-outline-strong flex flex-col bg-surface-low">
+      {/* Section header */}
+      <div className="px-4 py-3 border-b border-outline-strong flex items-center gap-2 shrink-0">
+        <GitBranch className="w-3.5 h-3.5 text-content-ghost" />
+        <span className="text-[11px] uppercase tracking-widest text-content-muted font-semibold">
           Pipelines
         </span>
       </div>
 
+      {/* Loading skeletons */}
       {isLoading && (
-        <div className="px-3 py-3 space-y-1.5">
+        <div className="p-2 space-y-1">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-8 bg-gray-800/50 rounded-lg animate-pulse" />
+            <div key={i} className="h-9 bg-surface-high rounded animate-pulse" />
           ))}
         </div>
       )}
-      {isError && <p className="px-4 py-3 text-red-400 text-xs">Failed to load.</p>}
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+      {isError && (
+        <p className="px-4 py-3 text-red-400 text-xs font-mono">Failed to load pipelines.</p>
+      )}
+
+      {/* Pipeline items */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-px">
         {data?.map((p) => (
           <button
             key={p.name}
             onClick={() => onSelect(p.name)}
-            className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono truncate transition-all ${
+            className={`w-full text-left px-3 py-2 rounded flex items-center gap-2 transition-all duration-150 ${
               selected === p.name
-                ? "bg-indigo-600/20 text-indigo-300 border border-indigo-700/40"
-                : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"
+                ? "bg-primary/10 border-l-2 border-primary text-primary-soft"
+                : "text-content-dim hover:bg-surface-high hover:text-content border-l-2 border-transparent"
             }`}
           >
-            {p.name}
+            <span className="font-mono text-xs truncate flex-1">{p.name}</span>
+            <span className="shrink-0 text-[10px] text-content-ghost font-mono">
+              {p.nodes.length}
+            </span>
           </button>
         ))}
       </div>
