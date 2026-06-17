@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PipelineList } from "./components/PipelineList";
 import { RunTable } from "./components/RunTable";
+import { RunDAGPanel } from "./components/RunDAGPanel";
 import { RunDetail } from "./components/RunDetail";
 import { StepDrawer } from "./components/StepDrawer";
 import { TopNav } from "./components/TopNav";
@@ -137,14 +138,24 @@ export default function App() {
         <NoPipelinesState />
       ) : selectedPipeline ? (
         <>
-          <RunTable
-            pipeline={selectedPipeline}
-            selectedRunId={selectedRunId}
-            onSelect={handleSelectRun}
-          />
-          {selectedRunId && pipeline && (
+          {!selectedRunId ? (
+            <RunTable
+              pipeline={selectedPipeline}
+              selectedRunId={selectedRunId}
+              onSelect={handleSelectRun}
+            />
+          ) : (
+            pipeline && (
+              <RunDAGPanel
+                pipeline={pipeline}
+                runId={selectedRunId}
+                selectedStep={selectedStep}
+                onSelectStep={setSelectedStep}
+              />
+            )
+          )}
+          {selectedRunId && (
             <RunDetail
-              pipeline={pipeline}
               runId={selectedRunId}
               onClose={handleCloseRun}
               onSelectStep={setSelectedStep}

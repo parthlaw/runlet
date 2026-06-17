@@ -19,7 +19,7 @@ CLI / Python API
       │
       ├──► DAG               (dependency resolution, topological ordering, cycle detection)
       ├──► Step Registry     (step instantiation — DSL or config-driven)
-      ├──► Thread Executor   (bounded thread-pool scheduling via in-degree tracking)
+      ├──► Executor          (step scheduling — SequentialExecutor or ThreadedExecutor, selected via ExecutorConfig in runner config)
       ├──► RunState          (in-memory mutable execution snapshot)
       ├──► Artifact Store    (large data handoff between steps — filesystem or S3)
       └──► Run Metastore     (durable lifecycle recording — SQLite, PostgreSQL, CockroachDB, or no-op)
@@ -27,20 +27,22 @@ CLI / Python API
 
 `ArtifactStore` and `RunMetastore` are injected into the runner; neither is coupled to the other. Either can be replaced independently.
 
+The executor is selected from `RunnerConfig.executor` (an `ExecutorConfig` with a `type` field). The default is `SequentialExecutor`, which runs steps one at a time in the caller's thread. `ThreadedExecutor` dispatches steps to a bounded thread pool and allows parallel execution of independent steps.
+
 ## Dual Persistence Model
 
 Two separate persistence layers serve distinct purposes:
 
 | Layer | Lifetime | Purpose |
 |---|---|---|
-| `RunState` | In-process, for the duration of a run | Tracks step statuses and outputs in memory; drives scheduling decisions |
+| `RunState` | In-process, for the duration of a run | Tracks step statuses in memory; drives scheduling decisions |
 | `RunMetastore` | Durable, survives process restart | Records run and step lifecycle for observability, resume, and audit |
 
 `RunState` is the authoritative source for in-flight scheduling. `RunMetastore` is the authoritative source for resume: when a run is resumed, `RunState` is reconstructed from metastore records before execution begins.
 
 ## Context Split
 
-The runner holds a write-capable context. Steps receive a read-only view of that context. This split prevents a step from writing to another step's output slot or advancing the run's state directly — only the runner may do so.
+The runner holds a `RunContext` — a write-capable context that owns the step output registry, artifact stores, metadata, and the cancellation event. Steps receive a `StepContext` — a read-only view built from `RunContext` immediately before each step is dispatched. `StepContext` exposes only read operations (`get_output`, `has_output`, `artifact_store`, `metadata`, `llm`, `is_cancelled`) and has no write methods. This prevents a step from writing to another step's output slot or advancing the run's state directly — only the runner may do so.
 
 ## Pluggable Registry Pattern
 

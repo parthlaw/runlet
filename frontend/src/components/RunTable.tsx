@@ -90,14 +90,8 @@ export function RunTable({ pipeline, selectedRunId, onSelect }: Props) {
     refetchInterval: 5_000,
   });
 
-  const hasRunSelected = selectedRunId !== null;
-
   return (
-    <section
-      className={`flex-1 pt-14 overflow-y-auto bg-surface-container-lowest transition-[margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ml-60 ${
-        hasRunSelected ? "mr-[400px]" : "mr-0"
-      }`}
-    >
+    <section className="flex-1 pt-14 overflow-y-auto bg-surface-container-lowest ml-60">
       <div className="p-6">
         <div className="flex items-center justify-between mb-8">
           <div>

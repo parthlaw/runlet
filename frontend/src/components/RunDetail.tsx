@@ -1,17 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, Info, X } from "lucide-react";
-import { api, type Pipeline, type RunDetail } from "../api";
-import { DAGView } from "./DAGView";
+import { api, type RunDetail } from "../api";
 import { StepExecutionTree } from "./StepExecutionTree";
 
 interface Props {
-  pipeline: Pipeline;
   runId: string;
   onClose: () => void;
   onSelectStep: (stepName: string) => void;
 }
 
-export function RunDetail({ pipeline, runId, onClose, onSelectStep }: Props) {
+export function RunDetail({ runId, onClose, onSelectStep }: Props) {
   const { data, isLoading, isError } = useQuery<RunDetail>({
     queryKey: ["run", runId],
     queryFn: () => api.run(runId),
@@ -81,20 +79,9 @@ export function RunDetail({ pipeline, runId, onClose, onSelectStep }: Props) {
           </div>
         )}
 
-        <div className="px-4 mb-8 mt-4">
-          <h3 className="font-label-caps text-label-caps text-on-surface-variant mb-4">
-            DAG VISUALIZATION
-          </h3>
-          <DAGView
-            pipeline={pipeline}
-            steps={steps}
-            selectedStep={null}
-            onSelectStep={onSelectStep}
-            compact
-          />
+        <div className="mt-4">
+          <StepExecutionTree steps={steps} onSelectStep={onSelectStep} />
         </div>
-
-        <StepExecutionTree steps={steps} onSelectStep={onSelectStep} />
       </div>
 
       <div className="p-4 border-t border-outline-variant bg-surface-container flex items-center gap-2 shrink-0">

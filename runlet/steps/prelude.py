@@ -4,7 +4,7 @@ from abc import abstractmethod
 from collections.abc import Mapping
 from typing import Any
 
-from runlet.orchestrator.runtime_context import RuntimeContext
+from runlet.orchestrator.context.step_context import StepContext
 from runlet.steps.base import BaseStep
 
 
@@ -22,5 +22,5 @@ class PreludeStep(BaseStep):
         """Run pre-topology logic against pipeline metadata. Return a JSON-serializable dict."""
         ...
 
-    def execute(self, context: RuntimeContext) -> dict[str, Any]:
+    def execute(self, context: StepContext) -> dict[str, Any]:
         return self.execute_prelude(context.metadata)

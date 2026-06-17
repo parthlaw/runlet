@@ -7,26 +7,26 @@ import pytest
 
 from runlet import BaseStep
 from runlet.orchestrator.config import PipelineConfig
-from runlet.orchestrator.context import PipelineContext
-from runlet.orchestrator.dag import DAG
-from runlet.orchestrator.models import RunnerConfig
-from runlet.orchestrator.runner import SequentialRunner
+from runlet.orchestrator.config.runner import ExecutorConfig, RunnerConfig
+from runlet.orchestrator.context.step_context import StepContext
+from runlet.orchestrator.execution.runner import WorkflowRunner
+from runlet.orchestrator.graph.dag import DAG
 
 
 class ProducerStep(BaseStep):
-    def execute(self, context: PipelineContext) -> dict[str, Any]:
+    def execute(self, context: StepContext) -> dict[str, Any]:
         return {"values": [0, 1, 2], "count": 3}
 
 
 class ConsumerStep(BaseStep):
-    def execute(self, context: PipelineContext) -> dict[str, Any]:
+    def execute(self, context: StepContext) -> dict[str, Any]:
         upstream = context.get_output("producer")
         total = sum(upstream["values"])
         return {"total": total}
 
 
 class FailingStep(BaseStep):
-    def execute(self, context: PipelineContext) -> dict[str, Any]:
+    def execute(self, context: StepContext) -> dict[str, Any]:
         raise RuntimeError("intentional failure")
 
 
@@ -68,7 +68,7 @@ def test_two_step_pipeline_success(store_dir, monkeypatch):
     ])
     cfg = PipelineConfig.from_dict(raw)
     dag = DAG(cfg)
-    runner = SequentialRunner(dag, RunnerConfig())
+    runner = WorkflowRunner(dag, RunnerConfig())
     result = runner.run("run001")
 
     assert result.success
@@ -109,14 +109,14 @@ def test_resume_skips_completed_steps(store_dir, tmp_path, monkeypatch):
     dag = DAG(cfg)
 
     # First run — populates metastore; runner closes the connection when done.
-    runner = SequentialRunner(
+    runner = WorkflowRunner(
         dag, RunnerConfig(), metastore=SqliteMetastore(SqliteConfig(db_path=db_path))
     )
     result1 = runner.run("run002")
     assert result1.success
 
     # Resume run — opens a fresh connection to the same file and reads prior step records.
-    runner2 = SequentialRunner(
+    runner2 = WorkflowRunner(
         dag, RunnerConfig(resume=True), metastore=SqliteMetastore(SqliteConfig(db_path=db_path))
     )
     result2 = runner2.run("run002")
@@ -129,7 +129,7 @@ def test_downstream_reads_upstream_output(store_dir, monkeypatch):
     received: list[dict] = []
 
     class CapturingConsumer(BaseStep):
-        def execute(self, context: PipelineContext) -> dict[str, Any]:
+        def execute(self, context: StepContext) -> dict[str, Any]:
             out = context.get_output("producer")
             received.append(out)
             return {"captured": True}
@@ -157,7 +157,7 @@ def test_downstream_reads_upstream_output(store_dir, monkeypatch):
     ])
     cfg = PipelineConfig.from_dict(raw)
     dag = DAG(cfg)
-    runner = SequentialRunner(dag, RunnerConfig())
+    runner = WorkflowRunner(dag, RunnerConfig())
     result = runner.run("run004")
 
     assert result.success
@@ -188,7 +188,7 @@ def test_failing_step_returns_failed_result(store_dir, monkeypatch):
     ])
     cfg = PipelineConfig.from_dict(raw)
     dag = DAG(cfg)
-    runner = SequentialRunner(dag, RunnerConfig())
+    runner = WorkflowRunner(dag, RunnerConfig())
     result = runner.run("run003")
 
     assert not result.success
@@ -240,3 +240,86 @@ def test_pipeline_decorator_resume(store_dir, tmp_path):
     assert result2.steps_skipped == ["step_a", "step_b"]
     assert result2.steps_executed == []
     assert executions == []
+
+
+# ---------------------------------------------------------------------------
+# Executor selection via RunnerConfig
+# ---------------------------------------------------------------------------
+
+class ProducerForExecutorTest(BaseStep):
+    def execute(self, context: StepContext) -> dict[str, Any]:
+        return {"value": 1}
+
+
+class ConsumerForExecutorTest(BaseStep):
+    def execute(self, context: StepContext) -> dict[str, Any]:
+        return {"received": context.get_output("producer")["value"]}
+
+
+def _patch_executor_test_steps(monkeypatch) -> None:
+    import importlib
+    import types
+    orig = importlib.import_module
+
+    def fake(name, *a, **kw):
+        if name == "executor_test_steps":
+            m = types.ModuleType("executor_test_steps")
+            m.ProducerForExecutorTest = ProducerForExecutorTest
+            m.ConsumerForExecutorTest = ConsumerForExecutorTest
+            return m
+        return orig(name, *a, **kw)
+
+    monkeypatch.setattr(importlib, "import_module", fake)
+
+
+def _executor_test_raw(store_dir: str) -> dict:
+    return {
+        "pipeline": {"name": "executor-selection-e2e"},
+        "store": {"type": "filesystem", "base_dir": store_dir, "prefix": ""},
+        "steps": [
+            {"name": "producer", "module": "executor_test_steps",
+             "class": "ProducerForExecutorTest", "depends_on": []},
+            {"name": "consumer", "module": "executor_test_steps",
+             "class": "ConsumerForExecutorTest", "depends_on": ["producer"]},
+        ],
+    }
+
+
+def test_sequential_executor_via_config(store_dir, monkeypatch):
+    """RunnerConfig with executor type=sequential runs the pipeline successfully."""
+    _patch_executor_test_steps(monkeypatch)
+    cfg = PipelineConfig.from_dict(_executor_test_raw(store_dir))
+    dag = DAG(cfg)
+    runner = WorkflowRunner(dag, RunnerConfig(executor=ExecutorConfig(type="sequential")))
+    result = runner.run("seq-exec-run")
+
+    assert result.success
+    assert result.steps_executed == ["producer", "consumer"]
+
+
+def test_threaded_executor_via_config(store_dir, monkeypatch):
+    """RunnerConfig with executor type=threaded runs the pipeline successfully."""
+    _patch_executor_test_steps(monkeypatch)
+    cfg = PipelineConfig.from_dict(_executor_test_raw(store_dir))
+    dag = DAG(cfg)
+    runner = WorkflowRunner(
+        dag, RunnerConfig(executor=ExecutorConfig(type="threaded", max_workers=2))
+    )
+    result = runner.run("threaded-exec-run")
+
+    assert result.success
+    assert result.steps_executed == ["producer", "consumer"]
+
+
+def test_executor_selected_from_pipeline_json(store_dir, monkeypatch):
+    """Executor block in the pipeline JSON runner section is respected."""
+    _patch_executor_test_steps(monkeypatch)
+    raw = _executor_test_raw(store_dir)
+    raw["runner"] = {"executor": {"type": "sequential"}}
+    cfg = PipelineConfig.from_dict(raw)
+    dag = DAG(cfg)
+    runner = WorkflowRunner(dag)
+    result = runner.run("json-exec-run")
+
+    assert result.success
+    assert cfg.runner.executor.type == "sequential"

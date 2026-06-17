@@ -14,11 +14,11 @@ from runlet.artifact_store.stores.filesystem import FilesystemStore
 from runlet.llm.config import LLMConfig
 from runlet.llm.proxy import LLMProxy
 from runlet.orchestrator.config import PipelineConfig
-from runlet.orchestrator.context import PipelineContext
-from runlet.orchestrator.dag import DAG
-from runlet.orchestrator.models import RunnerConfig
-from runlet.orchestrator.runner import SequentialRunner
-from runlet.orchestrator.writer_context import build_context
+from runlet.orchestrator.config.runner import RunnerConfig
+from runlet.orchestrator.context.run_context import build_context
+from runlet.orchestrator.context.step_context import StepContext
+from runlet.orchestrator.execution.runner import WorkflowRunner, build_runner
+from runlet.orchestrator.graph.dag import DAG
 
 # ---------------------------------------------------------------------------
 # LLMConfig parsing
@@ -122,12 +122,14 @@ def test_llm_proxy_complete_model_override(monkeypatch):
 
 def test_context_llm_raises_when_not_configured(tmp_path):
     store = FilesystemStore(str(tmp_path))
-    ctx = build_context(
+    run_ctx = build_context(
         run_id="r",
         pipeline_name="p",
         store=store,
         upload_store=store,
     )
+    from runlet.orchestrator.context.step_context import StepContext
+    ctx = StepContext(run_ctx)
     with pytest.raises(RuntimeError, match="No LLM"):
         _ = ctx.llm
 
@@ -135,13 +137,15 @@ def test_context_llm_raises_when_not_configured(tmp_path):
 def test_context_llm_returns_proxy_when_configured(tmp_path):
     store = FilesystemStore(str(tmp_path))
     mock_proxy = MagicMock()
-    ctx = build_context(
+    run_ctx = build_context(
         run_id="r",
         pipeline_name="p",
         store=store,
         upload_store=store,
         llm=mock_proxy,
     )
+    from runlet.orchestrator.context.step_context import StepContext
+    ctx = StepContext(run_ctx)
     assert ctx.llm is mock_proxy
 
 
@@ -181,7 +185,7 @@ def test_build_runner_without_llm_block_context_llm_raises(tmp_path, monkeypatch
     llm_accessed: list[bool] = []
 
     class DummyStep(BaseStep):
-        def execute(self, context: PipelineContext) -> dict:
+        def execute(self, context: StepContext) -> dict:
             try:
                 _ = context.llm
             except RuntimeError:
@@ -192,7 +196,7 @@ def test_build_runner_without_llm_block_context_llm_raises(tmp_path, monkeypatch
 
     cfg = PipelineConfig.from_dict(_pipeline_json(str(tmp_path)))
     dag = DAG(cfg)
-    runner = SequentialRunner(dag, RunnerConfig())
+    runner = WorkflowRunner(dag, RunnerConfig())
     result = runner.run("no-llm-run")
 
     assert result.success
@@ -203,7 +207,6 @@ def test_build_runner_with_llm_block_missing_env_raises(tmp_path, monkeypatch):
     """A pipeline with 'llm' block but missing env var must raise at build time."""
     import json as _json
 
-    from runlet.orchestrator.runner import build_runner
 
     monkeypatch.delenv("TEST_LLM_KEY_MISSING", raising=False)
 
@@ -221,14 +224,13 @@ def test_build_runner_with_llm_block_wires_proxy(tmp_path, monkeypatch):
     """With the env var set and _build_client patched, context.llm returns the proxy."""
     import json as _json
 
-    from runlet.orchestrator.runner import build_runner
 
     monkeypatch.setenv("TEST_LLM_KEY", "sk-dummy")
 
     llm_proxy_seen: list[object] = []
 
     class LLMStep(BaseStep):
-        def execute(self, context: PipelineContext) -> dict:
+        def execute(self, context: StepContext) -> dict:
             llm_proxy_seen.append(context.llm)
             return {"done": True}
 

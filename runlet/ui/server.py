@@ -18,8 +18,8 @@ from fastapi.staticfiles import StaticFiles
 
 from runlet.artifact_store import ArtifactStore, build_store
 from runlet.metastore import RunMetastore, build_metastore
-from runlet.orchestrator.config import PipelineConfig
-from runlet.orchestrator.dag import DAG
+from runlet.orchestrator.config.models import PipelineConfig
+from runlet.orchestrator.graph.dag import DAG
 from runlet.pipeline import Pipeline
 
 

@@ -11,10 +11,10 @@ from runlet.artifact_store import (
     register_store,
 )
 from runlet.orchestrator.config.models import StepConfig
-from runlet.orchestrator.context import PipelineContext, RuntimeContext
+from runlet.orchestrator.context.run_context import build_context
+from runlet.orchestrator.context.step_context import StepContext
 from runlet.orchestrator.errors import ConfigValidationError
-from runlet.orchestrator.runner import _validate_run_id
-from runlet.orchestrator.writer_context import WriterContext, build_context
+from runlet.orchestrator.execution.runner import _validate_run_id
 
 # ---------------------------------------------------------------------------
 # Content-addressed blob store (FilesystemStore)
@@ -85,28 +85,24 @@ def test_blob_uri_format(fs_store, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# RuntimeContext is read-only to steps
+# Context: StepContext is read-only, RunContext holds outputs
 # ---------------------------------------------------------------------------
 
-def test_pipeline_context_is_alias_for_writer_context():
-    assert PipelineContext is WriterContext
-
-
-def test_runtime_context_and_writer_context_have_set_output():
+def test_step_context_has_no_set_output():
+    """StepContext must not expose set_output or _register_output to steps."""
     ctx = build_context(
         run_id="r",
         pipeline_name="p",
         store=FilesystemStore.__new__(FilesystemStore),
         upload_store=FilesystemStore.__new__(FilesystemStore),
     )
-    # Both RuntimeContext (step-level key/value) and WriterContext (runner-level step dict)
-    # expose set_output
-    assert hasattr(ctx, "set_output")
-    assert hasattr(RuntimeContext, "set_output")
+    step_ctx = StepContext(ctx)
+    assert not hasattr(step_ctx, "set_output")
+    assert not hasattr(step_ctx, "_register_output")
 
 
-def test_writer_context_metadata_is_read_only(tmp_path):
-    """Steps must not be able to mutate shared pipeline metadata (P2-C fix)."""
+def test_context_metadata_is_read_only(tmp_path):
+    """Steps must not be able to mutate shared pipeline metadata."""
     store = FilesystemStore(str(tmp_path))
     ctx = build_context(
         run_id="r",
@@ -115,13 +111,14 @@ def test_writer_context_metadata_is_read_only(tmp_path):
         upload_store=store,
         metadata={"key": "original"},
     )
+    step_ctx = StepContext(ctx)
     import pytest as _pytest
     with _pytest.raises(TypeError):
-        ctx.metadata["key"] = "mutated"  # type: ignore[index]
-    assert ctx.metadata["key"] == "original"
+        step_ctx.metadata["key"] = "mutated"  # type: ignore[index]
+    assert step_ctx.metadata["key"] == "original"
 
 
-def test_runtime_context_metadata_is_mapping(tmp_path):
+def test_step_context_metadata_is_mapping(tmp_path):
     store = FilesystemStore(str(tmp_path))
     ctx = build_context(
         run_id="r",
@@ -130,9 +127,9 @@ def test_runtime_context_metadata_is_mapping(tmp_path):
         upload_store=store,
         metadata={"key": "value"},
     )
-    rc: RuntimeContext = ctx
+    step_ctx = StepContext(ctx)
     from collections.abc import Mapping
-    assert isinstance(rc.metadata, Mapping)
+    assert isinstance(step_ctx.metadata, Mapping)
 
 
 # ---------------------------------------------------------------------------

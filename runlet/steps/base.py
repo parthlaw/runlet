@@ -4,17 +4,17 @@ BaseStep — the abstract contract every pipeline step must implement.
 Quick start
 -----------
 Implement :meth:`execute` to return a JSON-serializable dict. That dict is
-stored in SQL as the step's output and made available to downstream steps via
-:meth:`~runlet.orchestrator.runtime_context.RuntimeContext.get_output`.
+stored in SQL and made available to downstream steps via
+``context.get_output(step_name)``.
 
 .. code-block:: python
 
     from runlet.steps import BaseStep
-    from runlet.orchestrator.runtime_context import RuntimeContext
+    from runlet.orchestrator.context.step_context import StepContext
 
 
     class ExtractStep(BaseStep):
-        def execute(self, context: RuntimeContext) -> dict:
+        def execute(self, context: StepContext) -> dict:
             records = fetch_data()
             return {"count": len(records), "status": "ok"}
 
@@ -29,7 +29,7 @@ streaming helpers see :mod:`runlet.utils.streaming`.
 .. code-block:: python
 
     class ProducerStep(BaseStep):
-        def execute(self, context: RuntimeContext) -> dict:
+        def execute(self, context: StepContext) -> dict:
             key = context.artifact_store.build_key(context.run_id, self.name, "data")
             with tempfile.NamedTemporaryFile() as tmp:
                 write_your_format(tmp, my_records())
@@ -37,7 +37,7 @@ streaming helpers see :mod:`runlet.utils.streaming`.
             return {"data_uri": context.artifact_store.to_uri(key), "record_count": 42}
 
     class ConsumerStep(BaseStep):
-        def execute(self, context: RuntimeContext) -> dict:
+        def execute(self, context: StepContext) -> dict:
             upstream = context.get_output("producer")
             with context.artifact_store.download_file(upstream["data_uri"]) as tmp:
                 records = read_your_format(tmp)
@@ -50,7 +50,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from runlet.orchestrator.runtime_context import RuntimeContext
+from runlet.orchestrator.context.step_context import StepContext
 
 logger = logging.getLogger(__name__)
 
@@ -70,14 +70,14 @@ class BaseStep(ABC):
         self.log: logging.Logger = logging.getLogger(f"step.{self.name}")
 
     @abstractmethod
-    def execute(self, context: RuntimeContext) -> dict[str, Any]:
+    def execute(self, context: StepContext) -> dict[str, Any]:
         """Run the step. Return a JSON-serializable dict stored as this step's output."""
         ...
 
     def validate_config(self) -> None:  # noqa: B027
         """Optional: validate ``self.config`` before execution."""
 
-    def teardown(self, context: RuntimeContext, success: bool) -> None:  # noqa: B027
+    def teardown(self, context: StepContext, success: bool) -> None:  # noqa: B027
         """Optional: cleanup after :meth:`execute` finishes."""
 
     def get_config(self, key: str, default: Any = None) -> Any:
