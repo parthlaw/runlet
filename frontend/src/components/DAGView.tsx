@@ -170,9 +170,17 @@ interface Props {
   selectedStep: string | null;
   onSelectStep: (name: string) => void;
   compact?: boolean;
+  fillHeight?: boolean;
 }
 
-export function DAGView({ pipeline, steps, selectedStep, onSelectStep, compact = false }: Props) {
+export function DAGView({
+  pipeline,
+  steps,
+  selectedStep,
+  onSelectStep,
+  compact = false,
+  fillHeight = false,
+}: Props) {
   const statusMap: Record<string, string> = {};
   const durationMap: Record<string, number | null> = {};
   steps.forEach((s) => {
@@ -188,15 +196,17 @@ export function DAGView({ pipeline, steps, selectedStep, onSelectStep, compact =
     compact
   );
 
-  const height = compact ? 200 : 280;
+  const fixedHeight = compact ? 200 : fillHeight ? undefined : 280;
 
   return (
     <div
-      style={{ height }}
+      style={fixedHeight != null ? { height: fixedHeight } : undefined}
       className={
-        compact
-          ? "relative w-full aspect-video bg-black rounded-xl border border-outline-variant overflow-hidden"
-          : "border-b border-outline-variant"
+        fillHeight
+          ? "absolute inset-0 bg-[#0d0d15] overflow-hidden"
+          : compact
+            ? "relative w-full aspect-video bg-black rounded-xl border border-outline-variant overflow-hidden"
+            : "border-b border-outline-variant"
       }
     >
       <ReactFlow
@@ -205,17 +215,17 @@ export function DAGView({ pipeline, steps, selectedStep, onSelectStep, compact =
         nodeTypes={nodeTypes}
         onNodeClick={(_, node) => onSelectStep(node.id)}
         fitView
-        fitViewOptions={{ padding: compact ? 0.15 : 0.25 }}
+        fitViewOptions={{ padding: compact ? 0.15 : fillHeight ? 0.2 : 0.25 }}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
         panOnScroll
-        zoomOnScroll={false}
+        zoomOnScroll={fillHeight}
         minZoom={0.2}
         maxZoom={2}
       >
-        <Background color={compact ? "#000000" : "#1f1f27"} gap={20} size={1} />
-        {!compact && <Controls showInteractive={false} />}
+        <Background color={compact || fillHeight ? "#0d0d15" : "#1f1f27"} gap={20} size={1} />
+        {(fillHeight || !compact) && <Controls showInteractive={false} />}
       </ReactFlow>
     </div>
   );

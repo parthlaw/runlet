@@ -18,14 +18,15 @@ One row per step attempt. If a step is retried, each attempt produces a separate
 
 Key constraints:
 - Attempt numbers are monotonically increasing per `(run_id, step_name)`.
-- A step's final outcome is determined by the row with the highest attempt number.
+- A step is considered complete when any of its attempt rows has status `SUCCESS` or `SKIPPED`. The output from the successful attempt is used on resume.
+- Steps whose attempts only have status `FAILED` or `RUNNING` are re-executed from attempt 1 on resume, preserving prior attempt history.
 - Skipped steps are recorded as a single row with status `SKIPPED` (no retry).
 
 ### Resume semantics
 
 When a run is resumed:
-- Steps whose final attempt has status `SUCCESS` or `SKIPPED` are not re-executed.
-- Steps whose final attempt has status `FAILED` or `RUNNING` (indicating an in-progress or crashed state) are re-executed from attempt 1, preserving prior attempt history.
+- Steps with any attempt row at status `SUCCESS` or `SKIPPED` are not re-executed. The output from the successful attempt is restored into the in-memory context.
+- Steps with no `SUCCESS` or `SKIPPED` attempt (i.e. all attempts are `FAILED` or `RUNNING`) are re-executed from attempt 1, preserving prior attempt history in the step table.
 - The `run_id` is unchanged across a resume; the run record is updated in place.
 
 ## Artifact Store

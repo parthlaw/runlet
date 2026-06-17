@@ -3,10 +3,11 @@ RunState — in-memory execution state for a pipeline run.
 
 Design
 ------
-RunState is a pure in-memory structure. It is populated on resume by calling
-``restore_from_records`` with the step rows returned by the metastore. All
-state transitions are driven by the runner and mirrored to the metastore via
-``_safe_metastore`` calls; no object store writes happen here.
+RunState tracks only step and run *statuses*. Step outputs are owned exclusively
+by RunContext, which is the single source of truth for output data.
+
+On resume, RunState is reconstructed from metastore step records (statuses only).
+Outputs are restored separately into RunContext by the runner.
 
 Thread safety
 -------------
@@ -28,8 +29,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_OUTPUT_SIZE_WARN_BYTES = 64_000
-
 
 class StepStatus(str, Enum):
     PENDING = "pending"
@@ -48,16 +47,16 @@ class RunStatus(str, Enum):
 
 @dataclass
 class RunState:
-    """Mutable in-memory execution state for a single pipeline run."""
+    """Mutable in-memory execution state for a single pipeline run.
+
+    Tracks run and step statuses only. Step outputs live in RunContext.
+    """
 
     run_id: str
     pipeline_name: str
 
     run_status: RunStatus = field(default=RunStatus.RUNNING, init=False)
     _step_statuses: dict[str, StepStatus] = field(
-        default_factory=dict, init=False, repr=False
-    )
-    _step_outputs: dict[str, dict[str, Any]] = field(
         default_factory=dict, init=False, repr=False
     )
     _flush_lock: threading.Lock = field(
@@ -92,22 +91,11 @@ class RunState:
     def mark_step_success(
         self,
         step_name: str,
-        output: dict[str, Any],
         duration_seconds: float,
         attempt: int = 1,
     ) -> None:
-        import json
-        serialized = json.dumps(output)
-        if len(serialized) > _OUTPUT_SIZE_WARN_BYTES:
-            logger.warning(
-                "Step '%s' output is %d bytes. Store large data in the artifact store"
-                " and return a URI instead.",
-                step_name,
-                len(serialized),
-            )
         with self._flush_lock:
             self._step_statuses[step_name] = StepStatus.SUCCESS
-            self._step_outputs[step_name] = output
         logger.info("[%s] → SUCCESS (%.2fs, attempt %d)", step_name, duration_seconds, attempt)
 
     def mark_step_failed(
@@ -137,14 +125,6 @@ class RunState:
             status = self._step_statuses.get(step_name)
         return status in (StepStatus.SUCCESS, StepStatus.SKIPPED)
 
-    def step_output(self, step_name: str) -> dict[str, Any]:
-        with self._flush_lock:
-            return dict(self._step_outputs.get(step_name, {}))
-
-    def all_step_outputs(self) -> dict[str, dict[str, Any]]:
-        with self._flush_lock:
-            return {name: dict(out) for name, out in self._step_outputs.items()}
-
     def summary(self) -> dict[str, Any]:
         with self._flush_lock:
             return {
@@ -164,13 +144,14 @@ class RunState:
         pipeline_name: str,
         records: list[StepRecord],
     ) -> RunState:
-        """Reconstruct in-memory state from metastore step records.
+        """Reconstruct in-memory status state from metastore step records.
 
         Groups records by step_name. A step is considered complete if any
-        attempt has status='success' (uses that attempt's output) or
-        status='skipped'. FAILED/RUNNING records mean the step will re-execute.
-        Handles retry history correctly: attempt=1 FAILED + attempt=2 SUCCESS
-        → step is complete with attempt=2's output.
+        attempt has status='success' or status='skipped'. FAILED/RUNNING
+        records mean the step will re-execute.
+
+        Note: outputs are not restored here — they are owned by RunContext
+        and restored separately by the runner via _outputs_from_records().
         """
         state = cls(run_id=run_id, pipeline_name=pipeline_name)
 
@@ -180,14 +161,11 @@ class RunState:
 
         completed = 0
         for step_name, attempts in by_step.items():
-            success = next((r for r in attempts if r.status == "success"), None)
-            if success is not None:
+            if any(r.status == "success" for r in attempts):
                 state._step_statuses[step_name] = StepStatus.SUCCESS
-                state._step_outputs[step_name] = success.output
                 completed += 1
                 continue
-            skipped = next((r for r in attempts if r.status == "skipped"), None)
-            if skipped is not None:
+            if any(r.status == "skipped" for r in attempts):
                 state._step_statuses[step_name] = StepStatus.SKIPPED
                 completed += 1
 
@@ -195,3 +173,4 @@ class RunState:
             "Restored state for run '%s': %d step(s) already complete.", run_id, completed
         )
         return state
+

@@ -6,7 +6,7 @@ import pytest
 
 from runlet import Pipeline
 from runlet.orchestrator.errors import ConfigValidationError
-from runlet.orchestrator.registry import (
+from runlet.orchestrator.registry.registry import (
     ConfigStepRegistry,
     PrebuiltStepRegistry,
     StepRegistry,
@@ -243,11 +243,11 @@ def test_pipeline_decorator_returns_original_function(tmp_path):
 
 
 def test_pipeline_validate_catches_incomplete_registry(tmp_path):
-    """SequentialRunner.validate() fires for PrebuiltStepRegistry on __init__."""
+    """WorkflowRunner.validate() fires for PrebuiltStepRegistry on __init__."""
     from runlet.artifact_store import build_store_config
     from runlet.orchestrator.config.models import PipelineConfig, StepConfig
-    from runlet.orchestrator.dag import DAG
-    from runlet.orchestrator.runner import SequentialRunner
+    from runlet.orchestrator.graph.dag import DAG
+    from runlet.orchestrator.execution.runner import WorkflowRunner
 
     step_cfg = StepConfig(
         name="missing",
@@ -264,4 +264,4 @@ def test_pipeline_validate_catches_incomplete_registry(tmp_path):
     empty_registry = PrebuiltStepRegistry({})
 
     with pytest.raises(ConfigValidationError, match=r"Steps \['missing'\]"):
-        SequentialRunner(dag=dag, step_registry=empty_registry)
+        WorkflowRunner(dag=dag, step_registry=empty_registry)

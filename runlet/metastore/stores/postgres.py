@@ -99,7 +99,7 @@ class PostgresMetastore(RunMetastore):
 
     Holds a single connection for the lifetime of the instance (v1 — no
     pooling). A ``threading.Lock`` serialises all operations because psycopg3
-    connections are not thread-safe and ``SequentialRunner`` dispatches steps
+    connections are not thread-safe and ``WorkflowRunner`` dispatches steps
     via a thread pool.
     """
 

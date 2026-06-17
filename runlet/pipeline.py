@@ -8,11 +8,11 @@ from typing import Any, cast
 
 from runlet.artifact_store import build_store_config
 from runlet.orchestrator.config.models import PipelineConfig, StepConfig
-from runlet.orchestrator.dag import DAG
+from runlet.orchestrator.config.runner import RunnerConfig, RunResult
 from runlet.orchestrator.errors import ConfigValidationError
-from runlet.orchestrator.models import RunnerConfig, RunResult
-from runlet.orchestrator.registry import PrebuiltStepRegistry
-from runlet.orchestrator.runner import SequentialRunner
+from runlet.orchestrator.execution.runner import WorkflowRunner
+from runlet.orchestrator.graph.dag import DAG
+from runlet.orchestrator.registry.registry import PrebuiltStepRegistry
 from runlet.steps.base import BaseStep
 
 
@@ -131,7 +131,7 @@ class Pipeline:
         )
         registry = PrebuiltStepRegistry(self._instances)
         dag = DAG(pipeline_cfg)
-        runner = SequentialRunner(
+        runner = WorkflowRunner(
             dag=dag,
             runner_config=runner_cfg,
             step_registry=registry,

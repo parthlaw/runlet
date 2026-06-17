@@ -18,7 +18,7 @@ Data too large to hold in a step's output dict is written to an artifact store a
 
 ## RunState
 
-The in-memory, mutable snapshot of a run's current execution state. It tracks the status of each step (pending, running, succeeded, failed, skipped) and the output dict of each completed step. `RunState` is ephemeral — it exists only for the lifetime of the process executing the run. If the process exits, `RunState` is lost; the durable record is in the Metastore.
+The in-memory, mutable snapshot of a run's current execution state. It tracks the status of each step (pending, running, succeeded, failed, skipped) and the overall run status. `RunState` is ephemeral — it exists only for the lifetime of the process executing the run. If the process exits, `RunState` is lost; the durable record is in the Metastore. Step output dicts are owned by `RunContext`, not `RunState`.
 
 ## Metastore
 

@@ -6,7 +6,8 @@ import pytest
 from pydantic import BaseModel
 
 from runlet.artifact_store.stores.filesystem import FilesystemStore
-from runlet.orchestrator.context import build_context
+from runlet.orchestrator.context.run_context import build_context
+from runlet.orchestrator.context.step_context import StepContext
 from runlet.utils.streaming import iter_jsonl, iter_jsonl_dicts, write_jsonl
 
 # ---------------------------------------------------------------------------
@@ -20,12 +21,13 @@ def fs_store(tmp_path):
 
 @pytest.fixture
 def pipeline_context(fs_store):
-    return build_context(
+    run_ctx = build_context(
         run_id="test-run",
         pipeline_name="test-pipeline",
         store=fs_store,
         upload_store=fs_store,
     )
+    return run_ctx, StepContext(run_ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -73,19 +75,22 @@ def test_write_jsonl_empty(tmp_path, fs_store):
 # ---------------------------------------------------------------------------
 
 def test_context_set_and_get_output(pipeline_context):
-    pipeline_context.set_output("step_a", {"count": 42, "uri": "s3://bucket/key"})
-    assert pipeline_context.has_output("step_a")
-    out = pipeline_context.get_output("step_a")
+    run_ctx, step_ctx = pipeline_context
+    run_ctx._register_output("step_a", {"count": 42, "uri": "s3://bucket/key"})
+    assert step_ctx.has_output("step_a")
+    out = step_ctx.get_output("step_a")
     assert out == {"count": 42, "uri": "s3://bucket/key"}
 
 
 def test_context_get_output_missing_raises(pipeline_context):
+    _, step_ctx = pipeline_context
     with pytest.raises(KeyError, match="step_missing"):
-        pipeline_context.get_output("step_missing")
+        step_ctx.get_output("step_missing")
 
 
 def test_context_has_output_false(pipeline_context):
-    assert not pipeline_context.has_output("nonexistent")
+    _, step_ctx = pipeline_context
+    assert not step_ctx.has_output("nonexistent")
 
 
 

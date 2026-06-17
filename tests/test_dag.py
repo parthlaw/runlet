@@ -2,7 +2,7 @@
 import pytest
 
 from runlet.orchestrator.config import ALLOWED_CONDITION_OPS, PipelineConfig
-from runlet.orchestrator.dag import DAG
+from runlet.orchestrator.graph.dag import DAG
 from runlet.orchestrator.errors import ConfigValidationError, CyclicDependencyError
 
 BASE_STORE = {"type": "filesystem", "base_dir": "/tmp/test", "prefix": ""}
