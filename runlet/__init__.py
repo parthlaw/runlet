@@ -26,14 +26,17 @@ from runlet.orchestrator.context.step_context import StepContext
 from runlet.orchestrator.execution.executor import (
     BaseExecutor,
     Executor,
-    ExecutorConfig,
     SequentialExecutor,
     ThreadedExecutor,
     build_executor,
 )
 from runlet.orchestrator.execution.runner import WorkflowRunner, build_runner
 from runlet.orchestrator.graph.dag import DAG
-from runlet.orchestrator.registry.registry import ConfigStepRegistry, PrebuiltStepRegistry, StepRegistry
+from runlet.orchestrator.registry.registry import (
+    ConfigStepRegistry,
+    PrebuiltStepRegistry,
+    StepRegistry,
+)
 from runlet.orchestrator.state.state import RunState, RunStatus, StepStatus
 from runlet.pipeline import Pipeline
 from runlet.steps.base import BaseStep
@@ -69,11 +72,11 @@ __all__ = [
     "S3ArtifactStore",  # lazy-loaded via __getattr__
     "S3Config",  # lazy-loaded via __getattr__
     "SequentialExecutor",
-    "WorkflowRunner",
     "StepContext",
     "StepRegistry",
     "StepStatus",
     "ThreadedExecutor",
+    "WorkflowRunner",
     "build_context",
     "build_executor",
     "build_metastore",

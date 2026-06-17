@@ -246,8 +246,8 @@ def test_pipeline_validate_catches_incomplete_registry(tmp_path):
     """WorkflowRunner.validate() fires for PrebuiltStepRegistry on __init__."""
     from runlet.artifact_store import build_store_config
     from runlet.orchestrator.config.models import PipelineConfig, StepConfig
-    from runlet.orchestrator.graph.dag import DAG
     from runlet.orchestrator.execution.runner import WorkflowRunner
+    from runlet.orchestrator.graph.dag import DAG
 
     step_cfg = StepConfig(
         name="missing",

@@ -1,10 +1,10 @@
-"""Tests for BaseExecutor: live-pool contract, scheduling behaviour, and WorkflowRunner integration."""
+"""Tests for BaseExecutor: live-pool contract, scheduling behaviour,
+and WorkflowRunner integration."""
 
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Any
 
 import pytest
@@ -13,7 +13,6 @@ from runlet.orchestrator.config.models import PipelineConfig
 from runlet.orchestrator.execution.executor import BaseExecutor, Executor
 from runlet.orchestrator.graph.dag import DAG
 from runlet.orchestrator.state.state import RunState
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -436,11 +435,11 @@ class TestParallelCustomExecutor:
 class TestWorkflowRunnerCustomExecutor:
     def test_custom_executor_is_used_instead_of_config_executor(self, tmp_path):
         """WorkflowRunner must use the provided executor instance, not build_executor."""
-        from runlet.orchestrator.execution.runner import WorkflowRunner
         from runlet.metastore import NoopMetastore
-        from runlet.steps.base import BaseStep
         from runlet.orchestrator.context.step_context import StepContext
+        from runlet.orchestrator.execution.runner import WorkflowRunner
         from runlet.orchestrator.registry.registry import PrebuiltStepRegistry
+        from runlet.steps.base import BaseStep
 
         class NoopStep(BaseStep):
             def execute(self, context: StepContext) -> dict:
@@ -485,12 +484,12 @@ class TestWorkflowRunnerCustomExecutor:
 
     def test_config_executor_used_when_no_custom_executor_provided(self, tmp_path):
         """When executor=None, WorkflowRunner falls back to build_executor(config)."""
-        from runlet.orchestrator.execution.runner import WorkflowRunner
-        from runlet.orchestrator.config.runner import RunnerConfig, ExecutorConfig
         from runlet.metastore import NoopMetastore
-        from runlet.steps.base import BaseStep
+        from runlet.orchestrator.config.runner import ExecutorConfig, RunnerConfig
         from runlet.orchestrator.context.step_context import StepContext
+        from runlet.orchestrator.execution.runner import WorkflowRunner
         from runlet.orchestrator.registry.registry import PrebuiltStepRegistry
+        from runlet.steps.base import BaseStep
 
         class NoopStep(BaseStep):
             def execute(self, context: StepContext) -> dict:

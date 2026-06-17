@@ -14,10 +14,10 @@ from runlet.artifact_store.stores.filesystem import FilesystemStore
 from runlet.llm.config import LLMConfig
 from runlet.llm.proxy import LLMProxy
 from runlet.orchestrator.config import PipelineConfig
-from runlet.orchestrator.context.step_context import StepContext
-from runlet.orchestrator.context.run_context import build_context
-from runlet.orchestrator.execution.runner import WorkflowRunner, build_runner
 from runlet.orchestrator.config.runner import RunnerConfig
+from runlet.orchestrator.context.run_context import build_context
+from runlet.orchestrator.context.step_context import StepContext
+from runlet.orchestrator.execution.runner import WorkflowRunner, build_runner
 from runlet.orchestrator.graph.dag import DAG
 
 # ---------------------------------------------------------------------------
@@ -207,7 +207,6 @@ def test_build_runner_with_llm_block_missing_env_raises(tmp_path, monkeypatch):
     """A pipeline with 'llm' block but missing env var must raise at build time."""
     import json as _json
 
-    from runlet.orchestrator.execution.runner import build_runner
 
     monkeypatch.delenv("TEST_LLM_KEY_MISSING", raising=False)
 
@@ -225,7 +224,6 @@ def test_build_runner_with_llm_block_wires_proxy(tmp_path, monkeypatch):
     """With the env var set and _build_client patched, context.llm returns the proxy."""
     import json as _json
 
-    from runlet.orchestrator.execution.runner import build_runner
 
     monkeypatch.setenv("TEST_LLM_KEY", "sk-dummy")
 

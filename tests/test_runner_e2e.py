@@ -7,10 +7,9 @@ import pytest
 
 from runlet import BaseStep
 from runlet.orchestrator.config import PipelineConfig
+from runlet.orchestrator.config.runner import ExecutorConfig, RunnerConfig
 from runlet.orchestrator.context.step_context import StepContext
-from runlet.orchestrator.config.runner import ExecutorConfig
 from runlet.orchestrator.execution.runner import WorkflowRunner
-from runlet.orchestrator.config.runner import RunnerConfig
 from runlet.orchestrator.graph.dag import DAG
 
 
@@ -258,7 +257,8 @@ class ConsumerForExecutorTest(BaseStep):
 
 
 def _patch_executor_test_steps(monkeypatch) -> None:
-    import importlib, types
+    import importlib
+    import types
     orig = importlib.import_module
 
     def fake(name, *a, **kw):
@@ -302,7 +302,9 @@ def test_threaded_executor_via_config(store_dir, monkeypatch):
     _patch_executor_test_steps(monkeypatch)
     cfg = PipelineConfig.from_dict(_executor_test_raw(store_dir))
     dag = DAG(cfg)
-    runner = WorkflowRunner(dag, RunnerConfig(executor=ExecutorConfig(type="threaded", max_workers=2)))
+    runner = WorkflowRunner(
+        dag, RunnerConfig(executor=ExecutorConfig(type="threaded", max_workers=2))
+    )
     result = runner.run("threaded-exec-run")
 
     assert result.success

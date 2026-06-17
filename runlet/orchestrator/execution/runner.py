@@ -10,7 +10,7 @@ import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from runlet.metastore.metastore import StepRecord
@@ -39,7 +39,7 @@ def _validate_run_id(run_id: str) -> None:
 
 
 class WorkflowRunner:
-    """Executes a pipeline DAG via a pluggable :class:`~runlet.orchestrator.execution.executor.Executor`.
+    """Executes a pipeline DAG via a pluggable Executor.
 
     The executor is selected from :attr:`RunnerConfig.executor`. Defaults to
     :class:`~runlet.orchestrator.execution.executor.SequentialExecutor` (single-threaded,
@@ -210,7 +210,7 @@ class WorkflowRunner:
         failed_step: str | None = None,
         error: str | None = None,
     ) -> RunResult:
-        """Construct a RunResult — eliminates the 3× repeated construction in run()."""
+        """Construct a RunResult — eliminates the 3x repeated construction in run()."""
         return RunResult(
             run_id=run_id,
             success=(status == "SUCCESS"),

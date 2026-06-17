@@ -7,10 +7,9 @@ from typing import Any
 
 from runlet import BaseStep
 from runlet.orchestrator.config import PipelineConfig
+from runlet.orchestrator.config.runner import ExecutorConfig, RunnerConfig, RunResult
 from runlet.orchestrator.context.step_context import StepContext
-from runlet.orchestrator.config.runner import ExecutorConfig
 from runlet.orchestrator.execution.runner import WorkflowRunner
-from runlet.orchestrator.config.runner import RunnerConfig, RunResult
 from runlet.orchestrator.graph.dag import DAG
 
 # ---------------------------------------------------------------------------

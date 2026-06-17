@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from typing import Any
 
 import pytest
 
@@ -17,7 +16,6 @@ from runlet.orchestrator.execution.executor import (
 )
 from runlet.orchestrator.graph.dag import DAG
 from runlet.orchestrator.state.state import RunState
-
 
 # ---------------------------------------------------------------------------
 # Helpers — build a minimal DAG from a step list

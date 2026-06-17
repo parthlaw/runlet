@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from runlet.artifact_store import ArtifactStore
 from runlet.orchestrator.context.run_context import RunContext
 
 
@@ -39,7 +40,7 @@ class StepContext:
         return self._ctx.pipeline_name
 
     @property
-    def artifact_store(self):
+    def artifact_store(self) -> ArtifactStore:
         """Access to the artifact store for large-data I/O."""
         return self._ctx.store
 

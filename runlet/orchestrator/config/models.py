@@ -10,8 +10,8 @@ from typing import Any
 
 from runlet.artifact_store import StoreConfig, build_store_config
 from runlet.llm.config import LLMConfig
-from runlet.orchestrator.errors import ConfigValidationError
 from runlet.orchestrator.config.runner import RunnerConfig
+from runlet.orchestrator.errors import ConfigValidationError
 
 ALLOWED_CONDITION_OPS = frozenset({"==", "!=", ">", "<", ">=", "<="})
 _SAFE_STEP_NAME = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")

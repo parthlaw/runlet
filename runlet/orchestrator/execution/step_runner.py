@@ -25,13 +25,13 @@ import traceback
 from typing import Any
 
 from runlet.orchestrator.config.models import PipelineConfig, StepConfig
+from runlet.orchestrator.context.run_context import RunContext
+from runlet.orchestrator.context.step_context import StepContext
 from runlet.orchestrator.errors import ConditionEvaluationError
 from runlet.orchestrator.execution.retry import DEFAULT_POLICY, RetryPolicy
 from runlet.orchestrator.registry.registry import StepRegistry
 from runlet.orchestrator.state.condition_evaluator import evaluate_condition
 from runlet.orchestrator.state.state import RunState, StepStatus
-from runlet.orchestrator.context.run_context import RunContext
-from runlet.orchestrator.context.step_context import StepContext
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +258,7 @@ class StepRunner:
         step_cfg: StepConfig,
         step_instance: Any,
         step_context: StepContext,
-    ) -> tuple[dict, float, int]:
+    ) -> tuple[dict[str, Any], float, int]:
         """Run step_instance.execute() with retry/backoff.
 
         Returns (output, duration_seconds, final_attempt) on success.
