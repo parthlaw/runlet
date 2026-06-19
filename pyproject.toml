@@ -8,7 +8,14 @@ version = "0.1.0"
 description = "DAG pipeline orchestration with JSONL streaming and pluggable artifact storage"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+authors = [
+    { name = "Parth Lawania" }
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
 dependencies = ["pydantic>=2.7.0"]
 
 [project.scripts]
