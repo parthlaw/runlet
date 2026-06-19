@@ -29,6 +29,9 @@ export function CSVViewer({ runId, stepName, fileKey, sizeBytes }: FileViewerPro
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const text = await res.text();
       const result = Papa.parse<string[]>(text, { skipEmptyLines: true });
+      if (result.errors.length > 0) {
+        console.warn("[CSVViewer] Parse warnings:", result.errors);
+      }
       if (result.data.length === 0) return { headers: [], rows: [] };
       const [headers, ...rows] = result.data;
       return { headers: headers as string[], rows };

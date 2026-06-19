@@ -19,7 +19,16 @@ export function JSONLViewer({ runId, stepName, fileKey }: FileViewerProps) {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const text = await res.text();
-      return text.trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+      const lines = text.trim().split("\n").filter(Boolean);
+      const parsed: Record<string, unknown>[] = [];
+      for (const line of lines) {
+        try {
+          parsed.push(JSON.parse(line));
+        } catch {
+          console.warn("[JSONLViewer] Skipping malformed line:", line.slice(0, 120));
+        }
+      }
+      return parsed;
     },
     staleTime: Infinity,
   });
