@@ -33,7 +33,7 @@ htmlcov/
 .env
 .env.*
 
-# Frontend build output (bundled into package — built by CI)
+# Frontend build output — generated at install time, never committed
 runlet/ui/static/
 
 # Node
