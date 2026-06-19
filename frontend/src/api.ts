@@ -23,6 +23,7 @@ export interface RunRecord {
   pipeline_name: string;
   status: "running" | "success" | "failed" | "cancelled";
   error: string | null;
+  outputs: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -71,5 +72,10 @@ export const api = {
 
 export function isFileUri(value: unknown): value is string {
   if (typeof value !== "string") return false;
-  return value.startsWith("file://") || value.startsWith("s3://") || value.startsWith("gs://");
+  return (
+    value.startsWith("file://") ||
+    value.startsWith("s3://") ||
+    value.startsWith("s3a://") ||
+    value.startsWith("gs://")
+  );
 }

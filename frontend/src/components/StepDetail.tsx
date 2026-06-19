@@ -81,7 +81,7 @@ export function StepDetail({ runId, stepRecord, onClose }: Props) {
             <div className="flex items-center gap-stack-xs text-on-surface-variant">
               <RefreshCw className="w-[18px] h-[18px]" />
               <span className="font-body-sm text-body-sm">
-                Attempt: {stepRecord.attempt + 1}
+                Attempt: {stepRecord.attempt}
               </span>
             </div>
           )}

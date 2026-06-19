@@ -8,6 +8,7 @@ import { StepDrawer } from "./components/StepDrawer";
 import { TopNav } from "./components/TopNav";
 import { api, Pipeline, RunDetail as RunDetailType } from "./api";
 
+
 function NoPipelinesState() {
   return (
     <main className="ml-60 mt-14 h-[calc(100vh-3.5rem)] overflow-hidden relative flex items-center justify-center bg-surface">
@@ -87,6 +88,7 @@ export default function App() {
   const [selectedPipeline, setSelectedPipeline] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: pipelines } = useQuery<Pipeline[]>({
     queryKey: ["pipelines"],
@@ -114,23 +116,32 @@ export default function App() {
     setSelectedPipeline(name);
     setSelectedRunId(null);
     setSelectedStep(null);
+    setSearchQuery("");
   }
 
   function handleSelectRun(runId: string) {
     setSelectedRunId(runId);
     setSelectedStep(null);
+    setSearchQuery("");
   }
 
   function handleCloseRun() {
     setSelectedRunId(null);
     setSelectedStep(null);
+    setSearchQuery("");
   }
 
   const hasPipelines = pipelines && pipelines.length > 0;
+  // Search is only meaningful on the run list — not when a run is open
+  const searchEnabled = !!selectedPipeline && !selectedRunId;
 
   return (
     <div className="min-h-screen bg-background overflow-hidden">
-      <TopNav />
+      <TopNav
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchEnabled={searchEnabled}
+      />
 
       <PipelineList selected={selectedPipeline} onSelect={handleSelectPipeline} />
 
@@ -143,6 +154,7 @@ export default function App() {
               pipeline={selectedPipeline}
               selectedRunId={selectedRunId}
               onSelect={handleSelectRun}
+              searchQuery={searchQuery}
             />
           ) : (
             pipeline && (

@@ -42,6 +42,7 @@ interface Props {
   pipeline: string;
   selectedRunId: string | null;
   onSelect: (runId: string) => void;
+  searchQuery: string;
 }
 
 function NoRunsState({ pipeline }: { pipeline: string }) {
@@ -83,12 +84,15 @@ function NoRunsState({ pipeline }: { pipeline: string }) {
   );
 }
 
-export function RunTable({ pipeline, selectedRunId, onSelect }: Props) {
+export function RunTable({ pipeline, selectedRunId, onSelect, searchQuery }: Props) {
   const { data, isLoading, isError } = useQuery<RunRecord[]>({
     queryKey: ["runs", pipeline],
     queryFn: () => api.runs(pipeline),
-    refetchInterval: 5_000,
   });
+
+  const filtered = searchQuery
+    ? (data ?? []).filter((r) => r.run_id.toLowerCase().includes(searchQuery.toLowerCase()))
+    : (data ?? []);
 
   return (
     <section className="flex-1 pt-14 overflow-y-auto bg-surface-container-lowest ml-60">
@@ -116,7 +120,13 @@ export function RunTable({ pipeline, selectedRunId, onSelect }: Props) {
 
         {!isLoading && !isError && data?.length === 0 && <NoRunsState pipeline={pipeline} />}
 
-        {data && data.length > 0 && (
+        {!isLoading && !isError && data && data.length > 0 && filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-24 text-on-surface-variant">
+            <p className="font-body-sm text-body-sm">No runs match <span className="font-code-sm text-code-sm text-primary">"{searchQuery}"</span></p>
+          </div>
+        )}
+
+        {filtered.length > 0 && (
           <div className="bg-surface border border-outline-variant rounded-xl overflow-hidden shadow-sm">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -132,7 +142,7 @@ export function RunTable({ pipeline, selectedRunId, onSelect }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant">
-                {data.map((run) => {
+                {filtered.map((run) => {
                   const isSelected = selectedRunId === run.run_id;
                   const isRunning = run.status === "running";
                   return (
