@@ -60,6 +60,24 @@ class ConditionConfig:
         return cls(step=data["step"], field=field_path, op=op, value=data["value"])
 
 
+def validate_condition_dependency(
+    step_name: str,
+    condition: ConditionConfig,
+    depends_on: tuple[str, ...],
+) -> None:
+    """Shared validation: condition.step must appear in depends_on.
+
+    Called by both StepConfig.from_dict() (JSON path) and Pipeline.step()
+    (decorator path) so the rule is enforced identically on both paths.
+    """
+    if condition.step not in depends_on:
+        raise ConfigValidationError(
+            f"Step '{step_name}' condition references step "
+            f"'{condition.step}' which is not in depends_on "
+            f"{list(depends_on)}."
+        )
+
+
 @dataclass(frozen=True)
 class StepConfig:
     """
@@ -105,12 +123,7 @@ class StepConfig:
         condition = None
         if data.get("condition") is not None:
             condition = ConditionConfig.from_dict(data["condition"])
-            if condition.step not in depends_on:
-                raise ConfigValidationError(
-                    f"Step '{data['name']}' condition references step "
-                    f"'{condition.step}' which is not in depends_on "
-                    f"{list(depends_on)}."
-                )
+            validate_condition_dependency(data["name"], condition, depends_on)
         return cls(
             name=data["name"],
             module=data["module"],

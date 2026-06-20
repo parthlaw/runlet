@@ -78,7 +78,14 @@ class PrebuiltStepRegistry(StepRegistry):
             ) from None
         # Fresh instance per call to match ConfigStepRegistry semantics —
         # execute() may mutate self and retries must start clean.
-        return type(template)(name=template.name, config=dict(template.config))
+        instance = type(template)(name=template.name, config=dict(template.config))
+        try:
+            instance.validate_config()
+        except Exception as exc:
+            raise StepImportError(
+                f"validate_config() failed for step '{name}': {exc}"
+            ) from exc
+        return instance
 
     def validate(self, step_names: list[str]) -> None:
         missing = [n for n in step_names if n not in self._instances]
