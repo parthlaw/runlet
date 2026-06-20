@@ -86,8 +86,7 @@ class BaseStep(ABC):
     def require_config(self, key: str) -> Any:
         if key not in self.config:
             raise ValueError(
-                f"[{self.name}] Required config key '{key}' is missing. "
-                f"Add it to pipeline.json → steps[{self.name!r}].config"
+                f"[{self.name}] Required config key '{key}' is missing."
             )
         return self.config[key]
 

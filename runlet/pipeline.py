@@ -7,7 +7,13 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from runlet.artifact_store import build_store_config
-from runlet.orchestrator.config.models import PipelineConfig, StepConfig
+from runlet.llm.config import LLMConfig
+from runlet.orchestrator.config.models import (
+    ConditionConfig,
+    PipelineConfig,
+    StepConfig,
+    validate_condition_dependency,
+)
 from runlet.orchestrator.config.runner import RunnerConfig, RunResult
 from runlet.orchestrator.errors import ConfigValidationError
 from runlet.orchestrator.execution.runner import WorkflowRunner
@@ -43,6 +49,20 @@ class Pipeline:
             return {"result": upstream["count"] * 2}
 
         result = pipe.run("run-001")
+
+    Starting the web UI
+    -------------------
+    Pass the pipeline to ``build_app`` and start uvicorn::
+
+        import uvicorn
+        from runlet.ui.server import build_app
+
+        if __name__ == "__main__":
+            uvicorn.run(build_app(pipelines=[pipe]), host="127.0.0.1", port=8000)
+
+    For JSON-defined pipelines use ``config_paths`` instead::
+
+        uvicorn.run(build_app(config_paths=["etl.json"]), host="127.0.0.1", port=8000)
     """
 
     def __init__(
@@ -52,11 +72,13 @@ class Pipeline:
         store: dict[str, Any],
         run_id_prefix: str = "run",
         runner: dict[str, Any] | None = None,
+        llm: dict[str, Any] | None = None,
     ) -> None:
         self._name = name
         self._store_raw = store
         self._run_id_prefix = run_id_prefix
         self._runner_raw: dict[str, Any] = runner or {}
+        self._llm_raw: dict[str, Any] | None = llm
         self._instances: dict[str, BaseStep] = {}
         self._step_cfgs: list[StepConfig] = []
 
@@ -66,12 +88,36 @@ class Pipeline:
         *,
         depends_on: list[str] | None = None,
         config: dict[str, Any] | None = None,
+        condition: dict[str, Any] | None = None,
+        retry: dict[str, Any] | None = None,
+        on_teardown: Callable[..., Any] | None = None,
     ) -> Callable[..., Any]:
         """
         Decorate a function as a pipeline step.
 
         The function must accept a single ``context`` argument
-        (RuntimeContext) and return a JSON-serializable dict.
+        (StepContext) and return a JSON-serializable dict.
+
+        Parameters
+        ----------
+        name:
+            Unique step identifier within the pipeline.
+        depends_on:
+            Names of upstream steps this step must wait for.
+        config:
+            Arbitrary key/value config forwarded to the step instance.
+        condition:
+            Optional skip condition evaluated against an upstream step's
+            output. Dict with keys ``step``, ``field``, ``op``, ``value``.
+            The referenced step must appear in ``depends_on``.
+            Example: ``{"step": "extract", "field": "status", "op": "==", "value": "ok"}``
+        retry:
+            Optional retry policy. Dict with keys ``max_attempts``,
+            ``backoff_base``, ``backoff_multiplier``, ``jitter``.
+            Example: ``{"max_attempts": 3, "backoff_base": 1.0}``
+        on_teardown:
+            Optional callable invoked after ``execute()`` completes
+            (whether it succeeded or failed). Signature: ``(context, success) -> None``.
         """
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             if name in self._instances:
@@ -79,15 +125,28 @@ class Pipeline:
                     f"Duplicate step name '{name}'. "
                     "Each step in a pipeline must have a unique name."
                 )
-            instance = _make_function_step(fn, name=name, config=config or {})
+
+            deps = tuple(depends_on or [])
+
+            # Parse and validate condition eagerly at decoration time.
+            parsed_condition: ConditionConfig | None = None
+            if condition is not None:
+                parsed_condition = ConditionConfig.from_dict(condition)
+                validate_condition_dependency(name, parsed_condition, deps)
+
+            instance = _make_function_step(
+                fn, name=name, config=config or {}, on_teardown=on_teardown
+            )
             self._instances[name] = instance
             self._step_cfgs.append(
                 StepConfig(
                     name=name,
-                    module="__runlet_decorator__",
-                    class_name="__runlet_decorator__",
-                    depends_on=tuple(depends_on or []),
+                    module=fn.__module__,
+                    class_name=fn.__qualname__,
+                    depends_on=deps,
                     config=config or {},
+                    condition=parsed_condition,
+                    retry=retry or {},
                 )
             )
             return fn
@@ -107,6 +166,7 @@ class Pipeline:
             steps=steps,
             store=build_store_config(self._store_raw),
             runner=RunnerConfig.from_dict(self._runner_raw),
+            llm=LLMConfig.from_dict(self._llm_raw) if self._llm_raw else None,
         )
 
     def run(
@@ -129,6 +189,12 @@ class Pipeline:
             if resume
             else pipeline_cfg.runner
         )
+
+        llm = None
+        if pipeline_cfg.llm is not None:
+            from runlet.llm.proxy import LLMProxy
+            llm = LLMProxy.from_config(pipeline_cfg.llm)
+
         registry = PrebuiltStepRegistry(self._instances)
         dag = DAG(pipeline_cfg)
         runner = WorkflowRunner(
@@ -137,15 +203,26 @@ class Pipeline:
             step_registry=registry,
             initial_metadata=initial_metadata,
             metastore=metastore,
+            llm=llm,
         )
         return runner.run(run_id)
 
 
-def _make_function_step(fn: Callable[..., Any], name: str, config: dict[str, Any]) -> BaseStep:
+def _make_function_step(
+    fn: Callable[..., Any],
+    name: str,
+    config: dict[str, Any],
+    on_teardown: Callable[..., Any] | None = None,
+) -> BaseStep:
     """Wrap a plain function as a BaseStep subclass."""
     class _FunctionStep(BaseStep):
         def execute(self, context: Any) -> dict[str, Any]:
             return cast(dict[str, Any], fn(context))
+
+    if on_teardown is not None:
+        def _teardown(self: Any, context: Any, success: bool) -> None:
+            on_teardown(context, success)
+        _FunctionStep.teardown = _teardown  # type: ignore[method-assign]
 
     _FunctionStep.__name__ = name
     _FunctionStep.__qualname__ = name
