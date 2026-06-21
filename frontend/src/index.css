@@ -110,3 +110,11 @@
   border-radius: 10px;
 }
 *::-webkit-scrollbar-thumb:hover { background-color: #908fa0; }
+
+/* JSON syntax highlighting (highlight.js / lowlight hljs-* classes) */
+.hljs-attr        { color: #c0c1ff; }           /* keys      → primary          */
+.hljs-string      { color: #10b981; }           /* strings   → success-emerald  */
+.hljs-number      { color: #ffb783; }           /* numbers   → tertiary         */
+.hljs-literal     { color: #ddb7ff; }           /* true/false/null → secondary  */
+.hljs-keyword     { color: #ddb7ff; }           /* true/false/null (inner span) → secondary */
+.hljs-punctuation { color: #908fa0; }           /* {}[],:    → outline          */
